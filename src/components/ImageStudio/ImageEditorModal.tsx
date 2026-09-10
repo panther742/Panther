@@ -25,7 +25,7 @@ interface ImageEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   image: GeneratedImage | null;
-  onSaveImage: (updatedImage: GeneratedImage) => void;
+  onSaveEditedImage: (editedUrl: string) => void;
   initialTool?: string;
   userKeys?: any;
 }
@@ -46,7 +46,7 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
   isOpen,
   onClose,
   image,
-  onSaveImage,
+  onSaveEditedImage,
   initialTool = 'remove-bg',
   userKeys,
 }) => {
@@ -60,6 +60,7 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
   const [format, setFormat] = useState<'png' | 'jpg' | 'webp' | 'transparent-png'>('png');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingMsg, setProcessingMsg] = useState<string>('');
+  const [editError, setEditError] = useState<string | null>(null);
   const [editedUrl, setEditedUrl] = useState<string>('');
 
   useEffect(() => {
@@ -82,6 +83,19 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
   const handleRunAiEdit = async (actionName: string, customPrompt?: string) => {
     setIsProcessing(true);
     setProcessingMsg(`Running AI ${actionName.replace('-', ' ')}...`);
+    setEditError(null);
+
+    // Send the image as a real data URL whenever possible so the AI can
+    // actually edit the uploaded pixels (remote URLs are converted client-side).
+    let sourceDataUrl = editedUrl;
+    if (editedUrl && !editedUrl.startsWith('data:image/') && /^https?:\/\//i.test(editedUrl)) {
+      try {
+        const canvas = await urlToDataUrlCanvas(editedUrl);
+        sourceDataUrl = canvas;
+      } catch {
+        // keep the remote URL — the server will fall back to text-driven regeneration
+      }
+    }
 
     try {
       const data = await apiClient.fetchWithCache<{
@@ -92,12 +106,12 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
         method: 'POST',
         body: JSON.stringify({
           action: actionName,
-          imageBase64: editedUrl,
+          imageBase64: sourceDataUrl,
           prompt: customPrompt || promptText || image.originalPrompt,
           stylePreset: selectedStyle,
           apiKeys: userKeys,
         }),
-      });
+      }, 0, 0, 300000);
 
       if (data.success && data.images && data.images.length > 0) {
         setEditedUrl(data.images[0].url);
@@ -109,16 +123,43 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
       // Fallback local canvas effect if API fails
       if (actionName === 'face-enhancement') {
         runCanvasSharpnessEnhance();
+        setEditError('AI enhancement unavailable — applied local sharpness boost instead.');
       } else if (actionName === 'color-replacement') {
         runCanvasColorShift();
+        setEditError('AI color shift unavailable — applied local color adjustment instead.');
       } else if (actionName === 'remove-bg') {
         handleRemoveBackgroundCanvas();
+        setEditError('AI background removal unavailable — applied local alpha extraction instead.');
+      } else {
+        setEditError(err?.message || `AI ${actionName} failed. Please check provider keys and try again.`);
       }
     } finally {
       setIsProcessing(false);
       setProcessingMsg('');
     }
   };
+
+  // Helper: convert a remote image URL into a local data URL via canvas
+  const urlToDataUrlCanvas = (url: string): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const cvs = document.createElement('canvas');
+          cvs.width = img.naturalWidth || img.width;
+          cvs.height = img.naturalHeight || img.height;
+          const ctx = cvs.getContext('2d');
+          if (!ctx) return reject(new Error('No canvas context'));
+          ctx.drawImage(img, 0, 0);
+          resolve(cvs.toDataURL('image/png'));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => reject(new Error('Image load failed'));
+      img.src = url;
+    });
 
   // Canvas Alpha Background Removal Fallback
   const handleRemoveBackgroundCanvas = () => {
@@ -254,15 +295,7 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
   };
 
   const handleSaveToGallery = () => {
-    const updated: GeneratedImage = {
-      ...image,
-      id: `img-edited-${Date.now()}`,
-      url: editedUrl,
-      width: targetWidth,
-      height: targetHeight,
-      isTransparent: format === 'transparent-png',
-    };
-    onSaveImage(updated);
+    onSaveEditedImage(editedUrl);
     onClose();
   };
 
@@ -322,6 +355,20 @@ export const ImageEditorModal: React.FC<ImageEditorModalProps> = ({
             );
           })}
         </div>
+
+        {/* Edit Error Notice */}
+        {editError && (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-950/70 border border-rose-500/50 text-rose-200 text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+            <span className="leading-relaxed">{editError}</span>
+            <button
+              onClick={() => setEditError(null)}
+              className="ml-auto text-rose-300 hover:text-white text-xs font-bold shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Main Workspace */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">

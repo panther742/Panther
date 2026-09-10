@@ -142,7 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => setActiveView('home')}
                   id="nav-home-tab"
                   className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl transition-all duration-200 ${
-                    activeView === 'home'
+                    (activeView as ActiveView) === 'home'
                       ? 'bg-gradient-to-r from-[#00D8FF] to-[#007BFF] text-black font-extrabold shadow-lg shadow-[#00D8FF]/25'
                       : 'text-slate-300 hover:text-white hover:bg-white/5'
                   }`}

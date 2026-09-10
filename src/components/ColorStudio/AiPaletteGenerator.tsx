@@ -36,7 +36,10 @@ export const AiPaletteGenerator: React.FC<AiPaletteGeneratorProps> = ({
         {
           method: 'POST',
           body: JSON.stringify({ prompt: textToUse }),
-        }
+        },
+        10 * 60 * 1000,
+        1,
+        90000
       );
 
       if (!data.success) {

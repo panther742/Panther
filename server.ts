@@ -4,14 +4,16 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import potrace from 'potrace';
+import Jimp from 'jimp';
 import {
   getProviderConfig,
   enhancePromptWithAI,
   enhanceConversationalPromptWithAI,
   generateImagesWithAdapter,
+  editImageWithAI,
 } from './src/server/imageGenService';
 import { convertScriptWithAI } from './src/server/scriptConverterService';
-import { reconstructImageToPSDBlueprint } from './src/server/psdReconstructionService';
+import { reconstructImageToPSDBlueprint, buildLocalPSDBlueprint } from './src/server/psdReconstructionService';
 
 const app = express();
 const PORT = 3000;
@@ -115,10 +117,40 @@ app.post('/api/psd/reconstruct', async (req, res) => {
       return res.status(400).json({ error: 'imageDataUrl is required' });
     }
 
+    // Support remote image URLs (e.g. sample presets hosted on Unsplash): download and
+    // convert them into a data URL so the vision engine can analyze the actual pixels.
+    let normalizedImageUrl: string = imageDataUrl;
+    if (typeof imageDataUrl === 'string' && /^https?:\/\//i.test(imageDataUrl)) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        const imgRes = await fetch(imageDataUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!imgRes.ok) {
+          throw new Error(`HTTP ${imgRes.status}`);
+        }
+        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+        if (!contentType.startsWith('image/')) {
+          throw new Error(`Unsupported content type: ${contentType}`);
+        }
+        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+        if (imgBuffer.byteLength > 25 * 1024 * 1024) {
+          throw new Error('Remote image is larger than 25MB.');
+        }
+        normalizedImageUrl = `data:${contentType};base64,${imgBuffer.toString('base64')}`;
+      } catch (fetchErr: any) {
+        console.warn(
+          `[PSD Session ${sessionId || 'isolated'}] Could not download remote source image (${fetchErr?.message || fetchErr}). Falling back to local reconstruction engine.`
+        );
+        const localResult = buildLocalPSDBlueprint(imageWidth || 1920, imageHeight || 1080, 'Remote Design', options || {});
+        return res.json({ success: true, blueprint: localResult, sessionId });
+      }
+    }
+
     console.log(`[PSD Session ${sessionId || 'isolated'}] Starting fresh zero-assumption image analysis (${imageWidth}x${imageHeight})...`);
 
     const result = await reconstructImageToPSDBlueprint(
-      imageDataUrl,
+      normalizedImageUrl,
       options || {},
       apiKey,
       imageWidth || 1920,
@@ -190,6 +222,9 @@ app.post('/api/colors/ai-generate', async (req, res) => {
 });
 
 // Server-side Image Vectorization processing
+// NOTE: potrace's bundled Jimp 0.14 crashes on Node 22 (it fails to decode images and
+// throws inside an async callback, killing the whole server). We decode the image with
+// the modern top-level Jimp and feed the raw bitmap straight into potrace's tracing core.
 app.post('/api/vectorize', (req, res) => {
   try {
     const { imageBase64, settings } = req.body;
@@ -208,14 +243,44 @@ app.post('/api/vectorize', (req, res) => {
       background: settings?.transparentBg ? 'transparent' : '#FFFFFF',
     };
 
-    const tracer = new potrace.Potrace(traceOptions);
-    tracer.loadImage(imageBase64, (err: any) => {
-      if (err) {
-        return res.status(500).json({ error: 'Vectorization failed', details: err?.message || String(err) });
-      }
-      const svg = tracer.getSVG();
-      res.json({ success: true, svg });
-    });
+    // Accept both raw base64 and full data URLs (Jimp in Node needs a Buffer)
+    const base64Data = String(imageBase64).replace(/^data:image\/[\w.+-]+;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    Jimp.read(imageBuffer)
+      .then((image: any) => {
+        const width = image.bitmap.width;
+        const height = image.bitmap.height;
+        const pixels = image.bitmap.data; // interleaved RGBA buffer
+
+        if (!width || !height || !pixels) {
+          return res.status(500).json({ error: 'Vectorization failed: could not decode image pixels' });
+        }
+
+        // Feed potrace's tracing engine directly (bypasses its broken async Jimp loader)
+        const fakeImage = {
+          bitmap: { width, height, data: pixels },
+          scan: (x0: number, y0: number, scanW: number, scanH: number, cb: (x: number, y: number, idx: number) => void) => {
+            for (let y = y0; y < y0 + scanH; y++) {
+              for (let x = x0; x < x0 + scanW; x++) {
+                cb(x, y, (y * width + x) * 4);
+              }
+            }
+          },
+        };
+
+        const tracer = new potrace.Potrace(traceOptions);
+        (tracer as any)._processLoadedImage(fakeImage);
+        const svg = tracer.getSVG();
+        res.json({ success: true, svg });
+      })
+      .catch((err: any) => {
+        console.error('Vectorization decode error:', err?.message || err);
+        res.status(500).json({
+          error: 'Vectorization failed — the image could not be decoded. Please upload a valid PNG/JPG image.',
+          details: err?.message || String(err),
+        });
+      });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -353,7 +418,7 @@ app.post('/api/image-gen/edit', async (req, res) => {
       return res.status(400).json({ error: 'Edit action is required' });
     }
 
-    console.log(`[AI Image Edit] Action requested: "${action}", Prompt: "${prompt || 'N/A'}"`);
+    console.log(`[AI Image Edit] Action requested: "${action}", Prompt: "${prompt || 'N/A'}", HasSourceImage: ${Boolean(imageBase64)}`);
 
     let editPrompt = '';
     switch (action) {
@@ -374,6 +439,9 @@ app.post('/api/image-gen/edit', async (req, res) => {
       case 'bg-replacement':
         editPrompt = `Replace background with "${prompt || 'luxury dark neon studio'}", isolating subject cleanly with professional depth of field and rim lighting.`;
         break;
+      case 'remove-bg':
+        editPrompt = `Remove the background completely and isolate the main subject on a fully transparent background, preserving crisp edges.`;
+        break;
       case 'color-replacement':
         editPrompt = `Transform color scheme to "${prompt || 'vibrant golden blue'}" while preserving exact crisp outline and lighting structure.`;
         break;
@@ -388,11 +456,11 @@ app.post('/api/image-gen/edit', async (req, res) => {
         break;
     }
 
-    const result = await generateImagesWithAdapter({
-      prompt: editPrompt,
+    const result = await editImageWithAI({
+      action,
+      imageBase64,
+      editPrompt,
       stylePreset: stylePreset || 'realistic',
-      imageCount: 1,
-      aspectRatio: '1:1',
       provider: provider || 'auto',
       apiKeys,
     });
@@ -402,6 +470,15 @@ app.post('/api/image-gen/edit', async (req, res) => {
     console.error('[Image Edit Error]:', err?.message || err);
     res.status(500).json({ error: err?.message || 'Image edit failed' });
   }
+});
+
+// Resilience guards: a single malformed request or library quirk must never
+// take down the whole studio server. Log and keep serving.
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception] Server continues running:', err?.message || err);
+});
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[Unhandled Rejection] Server continues running:', reason?.message || reason);
 });
 
 async function setupServer() {

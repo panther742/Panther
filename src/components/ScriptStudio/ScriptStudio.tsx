@@ -67,6 +67,7 @@ export const ScriptStudio: React.FC = () => {
 
   // Results State
   const [isConverting, setIsConverting] = useState<boolean>(false);
+  const [conversionError, setConversionError] = useState<string | null>(null);
   const [currentResult, setCurrentResult] = useState<ScriptConversionResult | null>(null);
   const [activeOutput, setActiveOutput] = useState<string>('पैंथर स्टूडियो');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -157,6 +158,7 @@ export const ScriptStudio: React.FC = () => {
   const handleConvert = async (overrideQuickFix?: string) => {
     if (!sourceText.trim()) return;
     setIsConverting(true);
+    setConversionError(null);
 
     try {
       const data = await apiClient.fetchWithCache<{ success: boolean; result: any }>(
@@ -171,7 +173,10 @@ export const ScriptStudio: React.FC = () => {
             designerMode,
             quickFixAction: overrideQuickFix,
           }),
-        }
+        },
+        10 * 60 * 1000,
+        1,
+        90000
       );
 
       if (data.success && data.result) {
@@ -192,9 +197,14 @@ export const ScriptStudio: React.FC = () => {
         setCurrentResult(res);
         setActiveOutput(res.primaryOutput);
         saveHistoryItem(res);
+      } else {
+        setConversionError('Conversion returned no result. Please try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Script conversion request error:', err);
+      setConversionError(
+        err?.message || 'AI script conversion failed. Please check your network connection and try again.'
+      );
     } finally {
       setIsConverting(false);
     }
@@ -741,6 +751,19 @@ export const ScriptStudio: React.FC = () => {
 
           {/* RIGHT PANEL: CONVERTED OUTPUT & TYPOGRAPHY PREVIEW */}
           <div className="lg:col-span-7 space-y-6">
+            {/* CONVERSION ERROR BANNER */}
+            {conversionError && (
+              <div className="p-4 rounded-2xl bg-rose-950/70 border border-rose-500/50 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-xl">
+                <span className="leading-relaxed">{conversionError}</span>
+                <button
+                  onClick={() => setConversionError(null)}
+                  className="text-rose-300 hover:text-white font-bold shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* PRIMARY CONVERTED RESULT CARD */}
             <div className="p-6 rounded-3xl bg-[#0E1628]/90 border border-[#00D8FF]/30 shadow-2xl space-y-5 relative overflow-hidden">
               <div className="flex items-center justify-between border-b border-[#00D8FF]/20 pb-4">

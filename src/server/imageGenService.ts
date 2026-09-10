@@ -118,15 +118,56 @@ async function generatePollinationsImages(
 
   console.log(`[AI Image Generator Log] Generating ${count} image(s) using Pollinations AI (FLUX.1)...`);
 
-  for (let i = 0; i < count; i++) {
+  const fetchOneImage = async (attempt: number): Promise<{ buffer: ArrayBuffer; seed: number }> => {
     const seed = Math.floor(Math.random() * 899999) + 100000;
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=${dimensions.width}&height=${dimensions.height}&seed=${seed}&model=flux&nologo=true`;
+    const pollinationsUrl =
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}` +
+      `?width=${dimensions.width}&height=${dimensions.height}&seed=${seed}&model=flux&nologo=true` +
+      `&referrer=panther.studio`;
 
-    const res = await fetch(pollinationsUrl);
-    if (!res.ok) {
-      throw new Error(`Pollinations AI Engine HTTP ${res.status} ${res.statusText}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s per-image timeout
+
+    try {
+      const res = await fetch(pollinationsUrl, { signal: controller.signal });
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => '');
+        throw new Error(`Pollinations AI Engine HTTP ${res.status} ${res.statusText}${bodyText ? `: ${bodyText.slice(0, 200)}` : ''}`);
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.startsWith('image/')) {
+        const bodyText = await res.text().catch(() => '');
+        throw new Error(
+          `Pollinations AI Engine returned a non-image response (${contentType || 'unknown type'})${
+            bodyText ? `: ${bodyText.slice(0, 200)}` : ''
+          }. The engine may be busy — please try again in a moment.`
+        );
+      }
+
+      const buffer = await res.arrayBuffer();
+      if (!buffer || buffer.byteLength < 100) {
+        throw new Error('Pollinations AI Engine returned an empty image. Please try again.');
+      }
+      return { buffer, seed };
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err?.name === 'AbortError') {
+        throw new Error('Pollinations AI Engine timed out after 120s. The free engine is busy — please try again or add a provider API key.');
+      }
+      if (attempt < 2) {
+        console.warn(`[AI Image Generator Log] Pollinations attempt ${attempt + 1} failed (${err?.message || err}). Retrying...`);
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        return fetchOneImage(attempt + 1);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
-    const buffer = await res.arrayBuffer();
+  };
+
+  for (let i = 0; i < count; i++) {
+    const { buffer, seed } = await fetchOneImage(0);
     const base64 = Buffer.from(buffer).toString('base64');
     images.push({
       id: `img-pollinations-${Date.now()}-${i}`,
@@ -158,14 +199,16 @@ export function translateHinglishLocally(rawPrompt: string): string {
   if (!p) return rawPrompt;
 
   // Local phrase replacements for Hinglish / Roman Hindi / Gujarati / Hindi
+  // NOTE: multi-word phrase rules MUST run before generic single-word rules
+  // (e.g. "ek ladki" must match before "ek" -> "a").
   const replacements: [RegExp, string][] = [
-    [/\bek\b/gi, 'a'],
     [/\bye image ko animate karo\b/gi, 'animate this reference image'],
     [/\bis image ko animate karo\b/gi, 'animate this reference image'],
     [/\bis image ko\b/gi, 'this reference image'],
     [/\bye image ko\b/gi, 'this reference image'],
     [/\bek ladki\b/gi, 'a stylish girl'],
     [/\bek ladka\b/gi, 'a stylish boy'],
+    [/\bek\b/gi, 'a'],
     [/\bblack panther\b/gi, 'majestic black panther'],
     [/\bsher\b/gi, 'majestic lion'],
     [/\bshir\b/gi, 'majestic lion'],
@@ -203,7 +246,9 @@ export function translateHinglishLocally(rawPrompt: string): string {
     [/\bdikhao\b/gi, 'showcasing'],
     [/\bbanao\b/gi, 'creating artwork of'],
     [/\baur\b/gi, 'and'],
-    [/\bme\b/gi, 'in'],
+    // Hinglish "me" = "in", but NEVER corrupt English verb + "me" phrases
+    // (e.g. "make me smile" must stay "make me smile", not "make in smile")
+    [/(?<!\b(give|tell|make|show|help|follow|watch|see|bring|take|ask|let|allow|teach|send|wish|call|remind)\s)\bme\b/gi, 'in'],
     [/\bmein\b/gi, 'in'],
   ];
 
@@ -233,101 +278,124 @@ export interface PromptAnalysisV2 {
  */
 export function analyzeAndExpandPromptLocallyV2(rawPrompt: string, stylePreset?: string): PromptAnalysisV2 {
   const translated = translateHinglishLocally(rawPrompt);
-  const pLower = translated.toLowerCase();
+  const rawLower = rawPrompt.toLowerCase();
+  const tLower = translated.toLowerCase();
+  const rawWordCount = rawPrompt.trim().split(/\s+/).length;
 
   // STEP 1: Entity & Brand Detection (Never replace objects or substitute brands)
   let entity = 'Subject';
-  let refinedEntity = translated;
+  let entityPhrase: string | null = null;
 
-  if (pLower.includes('mustang shelby') || pLower.includes('shelby gt500') || pLower.includes('shelby')) {
+  if (rawLower.includes('mustang shelby') || rawLower.includes('shelby gt500') || rawLower.includes('shelby')) {
     entity = 'Ford Mustang Shelby GT500';
-    refinedEntity = 'Ford Mustang Shelby GT500';
-  } else if (pLower.includes('mustang')) {
+    entityPhrase = 'Ford Mustang Shelby GT500';
+  } else if (rawLower.includes('mustang')) {
     entity = 'Ford Mustang';
-    refinedEntity = 'Ford Mustang GT';
-  } else if (pLower.includes('ferrari sf90') || pLower.includes('ferrari')) {
+    entityPhrase = 'Ford Mustang GT';
+  } else if (rawLower.includes('ferrari sf90') || rawLower.includes('ferrari')) {
     entity = 'Ferrari SF90 Stradale';
-    refinedEntity = 'Ferrari SF90 Stradale supercar';
-  } else if (pLower.includes('bmw m4') || pLower.includes('m4 competition')) {
+    entityPhrase = 'Ferrari SF90 Stradale supercar';
+  } else if (rawLower.includes('bmw m4') || rawLower.includes('m4 competition')) {
     entity = 'BMW M4 Competition';
-    refinedEntity = 'BMW M4 Competition sports coupe';
-  } else if (pLower.includes('bmw')) {
+    entityPhrase = 'BMW M4 Competition sports coupe';
+  } else if (rawLower.includes('bmw')) {
     entity = 'BMW';
-    refinedEntity = 'high performance BMW sports sedan';
-  } else if (pLower.includes('porsche 911') || pLower.includes('porsche')) {
+    entityPhrase = 'high performance BMW sports sedan';
+  } else if (rawLower.includes('porsche 911') || rawLower.includes('porsche')) {
     entity = 'Porsche 911 GT3 RS';
-    refinedEntity = 'Porsche 911 GT3 RS sports car';
-  } else if (pLower.includes('lamborghini')) {
+    entityPhrase = 'Porsche 911 GT3 RS sports car';
+  } else if (rawLower.includes('lamborghini')) {
     entity = 'Lamborghini Aventador SVJ';
-    refinedEntity = 'Lamborghini Aventador SVJ supercar';
-  } else if (pLower.includes('bugatti')) {
+    entityPhrase = 'Lamborghini Aventador SVJ supercar';
+  } else if (rawLower.includes('bugatti')) {
     entity = 'Bugatti Chiron Super Sport';
-    refinedEntity = 'Bugatti Chiron Super Sport hypercar';
-  } else if (pLower.includes('photoshop')) {
+    entityPhrase = 'Bugatti Chiron Super Sport hypercar';
+  } else if (rawLower.includes('photoshop')) {
     entity = 'Graphic Design Software';
-    refinedEntity = 'Adobe Photoshop creative digital graphic design workspace';
-  } else if (pLower.includes('panther') || pLower.includes('black panther')) {
+    entityPhrase = 'Adobe Photoshop creative digital graphic design workspace';
+  } else if (rawLower.includes('panther') || rawLower.includes('black panther')) {
     entity = 'Black Panther';
-    refinedEntity = 'majestic Black Panther with glowing coat and muscular build';
-  } else if (pLower.includes('lion') || pLower.includes('sher')) {
+    entityPhrase = 'majestic Black Panther with glowing coat and muscular build';
+  } else if (rawLower.includes('lion') || rawLower.includes('sher')) {
     entity = 'Lion';
-    refinedEntity = 'majestic male lion with full mane';
-  } else if (pLower.includes('tiger')) {
+    entityPhrase = 'majestic male lion with full mane';
+  } else if (rawLower.includes('tiger')) {
     entity = 'Tiger';
-    refinedEntity = 'royal Bengal tiger with vivid stripes';
+    entityPhrase = 'royal Bengal tiger with vivid stripes';
   }
 
-  // STEP 2: Action Understanding
-  let action = 'dynamic position';
-  let actionPhrase = 'positioned dynamically';
+  // Only swap the whole prompt for the refined entity when the user prompt is
+  // essentially just the subject itself (e.g. "panther", "ferrari"). For longer
+  // prompts like "luxury coffee logo with golden panther emblem" we preserve the
+  // full user description and never replace the surrounding context.
+  const isEntityOnlyPrompt = entity !== 'Subject' && rawWordCount <= 4;
+  const coreSubject = isEntityOnlyPrompt && entityPhrase ? entityPhrase : translated;
 
-  if (pLower.includes('running on racetrack') || pLower.includes('race') || pLower.includes('racing') || pLower.includes('racetrack')) {
+  // STEP 2: Action Understanding (detected from the ORIGINAL user words)
+  let action = 'dynamic position';
+  let actionPhrase = '';
+
+  if (rawLower.includes('running on racetrack') || rawLower.includes('race') || rawLower.includes('racing') || rawLower.includes('racetrack')) {
     action = 'High-speed racing';
     actionPhrase = 'racing at dynamic high speed with motion blur and spinning wheels';
-  } else if (pLower.includes('drifting') || pLower.includes('drift')) {
+  } else if (rawLower.includes('drifting') || rawLower.includes('drift')) {
     action = 'Tire smoke drift';
     actionPhrase = 'performing a dramatic high-speed drift with tire smoke and skid marks';
-  } else if (pLower.includes('jumping') || pLower.includes('airborne') || pLower.includes('flying')) {
+  } else if (rawLower.includes('jumping') || rawLower.includes('airborne') || rawLower.includes('flying')) {
     action = 'Airborne motion';
     actionPhrase = 'captured airborne in high-speed motion mid-air';
-  } else if (pLower.includes('parked') || pLower.includes('standing') || pLower.includes('static')) {
+  } else if (rawLower.includes('parked') || rawLower.includes('standing') || rawLower.includes('static')) {
     action = 'Static display';
     actionPhrase = 'parked elegantly in a pristine beauty shot stance';
-  } else if (pLower.includes('walking') || pLower.includes('walk') || pLower.includes('chal')) {
+  } else if (rawLower.includes('walking') || rawLower.includes('walk') || rawLower.includes('chal')) {
     action = 'Graceful locomotion';
     actionPhrase = 'walking gracefully forward with smooth natural motion';
-  } else if (pLower.includes('running') || pLower.includes('run') || pLower.includes('bhag')) {
+  } else if (rawLower.includes('running') || rawLower.includes('run') || rawLower.includes('bhag')) {
     action = 'Fast running';
     actionPhrase = 'running fast at high speed with intense dynamic stride';
+  } else if (rawLower.includes('dheere') || rawLower.includes('slowly') || rawLower.includes('slow')) {
+    action = 'Slow majestic motion';
+    actionPhrase = 'moving slowly and majestically with smooth cinematic pacing';
   }
 
-  // STEP 3: Environment Analysis
+  // STEP 3: Environment Analysis (detected from the ORIGINAL user words)
   let environment = 'Cinematic background';
-  let environmentPhrase = 'in a cinematic atmospheric setting';
+  let environmentPhrase = '';
 
-  if (pLower.includes('racetrack') || pLower.includes('track') || pLower.includes('circuit')) {
+  if (rawLower.includes('racetrack') || rawLower.includes('track') || rawLower.includes('circuit')) {
     environment = 'Professional Race Circuit';
     environmentPhrase = 'on a professional asphalt Grand Prix racing circuit with red and white apex curbing';
-  } else if (pLower.includes('forest') || pLower.includes('jungle')) {
+  } else if (rawLower.includes('forest') || rawLower.includes('jungle')) {
     environment = 'Dense Tropical Forest';
     environmentPhrase = 'in a dense lush green tropical forest with volumetric sunbeams filtering through leaves';
-  } else if (pLower.includes('city') || pLower.includes('street') || pLower.includes('cyberpunk')) {
+  } else if (rawLower.includes('city') || rawLower.includes('street') || rawLower.includes('cyberpunk')) {
     environment = 'Neon Urban Street';
     environmentPhrase = 'on a vibrant neon-lit modern urban city street with rainy wet asphalt reflections';
-  } else if (pLower.includes('desert') || pLower.includes('sand')) {
+  } else if (rawLower.includes('desert') || rawLower.includes('sand')) {
     environment = 'Expansive Sand Dunes';
     environmentPhrase = 'across vast golden desert sand dunes under an intense sun';
-  } else if (pLower.includes('snow') || pLower.includes('winter') || pLower.includes('baraf')) {
+  } else if (rawLower.includes('snow') || rawLower.includes('winter') || rawLower.includes('baraf')) {
     environment = 'Snowy Winter Landscape';
     environmentPhrase = 'in a crisp alpine snow-covered mountain terrain';
-  } else if (pLower.includes('rain') || pLower.includes('barish')) {
+  } else if (rawLower.includes('rain') || rawLower.includes('barish')) {
     environment = 'Atmospheric Rain';
     environmentPhrase = 'in heavy atmospheric rain with realistic water droplets and misty haze';
   }
 
   // STEP 4: Expand Prompt Internally
+  // Never duplicate phrases the Hinglish translation already added, and never
+  // strip the user's original descriptive context.
+  const hasMotionKeyword = /\b(racing|drift|jump|airborne|fly|parked|standing|static|walk|running|run|approach|moving|motion|slowly)\w*/i.test(translated);
+  const hasEnvKeyword = /\b(racetrack|track|circuit|forest|jungle|city|street|cyberpunk|desert|sand|snow|winter|rain|sunset)\w*/i.test(translated);
+
+  const expandedParts: string[] = [coreSubject];
+  if (actionPhrase && !hasMotionKeyword) expandedParts.push(actionPhrase);
+  else if (!actionPhrase && !hasMotionKeyword) expandedParts.push('positioned dynamically');
+  if (environmentPhrase && !hasEnvKeyword) expandedParts.push(environmentPhrase);
+  else if (!environmentPhrase && !hasEnvKeyword) expandedParts.push('in a cinematic atmospheric setting');
+
   const styleModifier = stylePreset && stylePreset !== 'realistic' ? `, ${stylePreset} style` : '';
-  const expandedPrompt = `Ultra realistic ${refinedEntity} ${actionPhrase} ${environmentPhrase}${styleModifier}, aggressive cinematic camera angle, professional volumetric lighting, natural colors, highly detailed material textures, accurate object anatomy, 8k resolution, photorealistic masterpiece rendering. ${STANDARD_NEGATIVE_PROMPT}`;
+  const expandedPrompt = `Ultra realistic ${expandedParts.join(' ')}${styleModifier}, aggressive cinematic camera angle, professional volumetric lighting, natural colors, highly detailed material textures, accurate object anatomy, 8k resolution, photorealistic masterpiece rendering. ${STANDARD_NEGATIVE_PROMPT}`;
 
   return {
     entityDetected: entity,
@@ -514,6 +582,140 @@ Construct the updated complete image prompt.`,
       optimizedPrompt: `${previousPrompt}, modified with: ${translatedEdit}. ${STANDARD_NEGATIVE_PROMPT}`,
     };
   }
+}
+
+/**
+ * Real AI Image Editing Adapter.
+ * When a Gemini key is available, sends the ACTUAL source image + the edit instruction
+ * to a Gemini image model so the edit is applied to the uploaded image itself.
+ * Without a Gemini key, falls back to text-driven regeneration via the provider adapter.
+ */
+export async function editImageWithAI(params: {
+  action: string;
+  imageBase64?: string | null;
+  editPrompt: string;
+  stylePreset: string;
+  provider: string;
+  apiKeys?: any;
+}): Promise<ImageGenResult> {
+  const startTime = Date.now();
+  const { action, imageBase64, editPrompt, stylePreset, provider, apiKeys } = params;
+
+  const geminiKey = apiKeys?.geminiKey || process.env.GEMINI_API_KEY;
+  const isDataUrl = typeof imageBase64 === 'string' && imageBase64.startsWith('data:image/');
+
+  // 1. Gemini-backed TRUE image editing (source image is actually used)
+  if (geminiKey && isDataUrl) {
+    try {
+      const ai = new GoogleGenAI({
+        apiKey: geminiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+
+      const mimeMatch = imageBase64!.match(/^data:(image\/[\w.+-]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+      const base64Data = imageBase64!.replace(/^data:image\/[\w.+-]+;base64,/, '');
+
+      const instruction = `${editPrompt} Keep the original subject, composition, and aspect ratio intact. Output the edited image directly.`;
+
+      const modelsToTry = ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image'];
+      let imageBase64List: string[] = [];
+      let successfulModel = '';
+      let lastError: any = null;
+
+      for (const modelName of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: instruction },
+                  { inlineData: { mimeType, data: base64Data } },
+                ],
+              },
+            ],
+            config: {
+              imageConfig: {
+                aspectRatio: '1:1',
+              },
+            },
+          });
+
+          const candidates = response.candidates || [];
+          for (const candidate of candidates) {
+            for (const part of candidate.content?.parts || []) {
+              if (part.inlineData?.data) {
+                imageBase64List.push(part.inlineData.data);
+              }
+            }
+          }
+
+          if (imageBase64List.length > 0) {
+            successfulModel = modelName;
+            break;
+          }
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`[AI Image Edit] Gemini model ${modelName} failed: ${err?.message || err}`);
+        }
+      }
+
+      if (imageBase64List.length > 0) {
+        const totalTimeMs = Date.now() - startTime;
+        return {
+          images: imageBase64List.slice(0, 1).map((b64, idx) => ({
+            id: `img-edit-${Date.now()}-${idx}`,
+            url: `data:image/png;base64,${b64}`,
+            width: 1024,
+            height: 1024,
+            resolution: '1024x1024',
+            provider: `Google Gemini (${successfulModel})`,
+            generationTimeMs: totalTimeMs,
+            seed: Math.floor(Math.random() * 899999) + 100000,
+          })),
+          originalPrompt: editPrompt,
+          optimizedPrompt: editPrompt,
+          providerUsed: `Google Gemini (${successfulModel})`,
+          generationTimeMs: totalTimeMs,
+        };
+      }
+
+      const errMsg =
+        String(lastError?.message || lastError || '') ||
+        'Google Gemini returned no edited image.';
+      const isQuotaErr =
+        errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('limit: 0');
+      if (!isQuotaErr) {
+        throw new Error(`AI Image Edit Error: ${errMsg}`);
+      }
+      console.warn('[AI Image Edit] Gemini quota exhausted — falling back to text-driven regeneration.');
+    } catch (err: any) {
+      const errStr = String(err?.message || err);
+      const isQuotaErr =
+        errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('limit: 0');
+      if (!isQuotaErr) {
+        throw new Error(errStr || 'AI image edit failed');
+      }
+      // Quota exhausted → fall through to regeneration fallback
+    }
+  }
+
+  // 2. Fallback: text-driven regeneration via the provider adapter
+  // (source image is passed along for providers that support image conditioning)
+  console.warn(
+    `[AI Image Edit] No Gemini key or source image available — running "${action}" as text-driven regeneration.`
+  );
+  return generateImagesWithAdapter({
+    prompt: editPrompt,
+    stylePreset: stylePreset || 'realistic',
+    sourceImageUrl: isDataUrl ? (imageBase64 as string) : undefined,
+    imageCount: 1,
+    aspectRatio: '1:1',
+    provider: provider || 'auto',
+    apiKeys,
+  });
 }
 
 // Generate media (Image, GIF, Video) via Real Provider Adapter
@@ -748,7 +950,10 @@ export async function generateImagesWithAdapter(params: ImageGenParams): Promise
     // "Real AI Video Generation is unavailable with the current provider."
     // Do NOT generate fake videos.
     if (!generatedVideoUrl) {
-      throw new Error('Real AI Video Generation is unavailable with the current provider.');
+      throw new Error(
+        'Real AI Video Generation is unavailable with the current provider. ' +
+          'For Video/GIF generation, open "Provider Keys" and add a GEMINI_API_KEY (Google Veo), RUNWAY_API_KEY, LUMA_API_KEY, or REPLICATE_API_KEY.'
+      );
     }
 
     const totalTimeMs = Date.now() - startTime;
@@ -1134,7 +1339,10 @@ export async function generateImagesWithAdapter(params: ImageGenParams): Promise
     }
   }
 
-  throw new Error(`Selected provider "${selectedProvider}" is not configured with an API key.`);
+  throw new Error(
+    `Selected provider "${selectedProvider}" is not configured with an API key. ` +
+      'For free image generation choose the "FLUX.1 (Pollinations AI Engine)" provider, or add your API key in "Provider Keys".'
+  );
 }
 
 function getDimensionsFromRatio(aspectRatio?: string): { width: number; height: number } {

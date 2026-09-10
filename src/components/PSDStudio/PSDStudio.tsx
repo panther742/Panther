@@ -133,6 +133,7 @@ export const PSDStudio: React.FC = () => {
     setSelectedExportLayerIds(new Set());
     setFilterSearch('');
     setLastSavedTime(null);
+    setReconstructionError(null);
   };
 
   const [options, setOptions] = useState<PSDReconstructionOptions>({
@@ -160,6 +161,7 @@ export const PSDStudio: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [progressStage, setProgressStage] = useState<string>('');
   const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [reconstructionError, setReconstructionError] = useState<string | null>(null);
 
   const [blueprint, setBlueprint] = useState<PSDReconstructionBlueprint | null>(null);
   const [psdResult, setPsdResult] = useState<GeneratedPSDResult | null>(null);
@@ -226,18 +228,31 @@ export const PSDStudio: React.FC = () => {
       if (item) {
         const parsed = JSON.parse(item);
         if (parsed?.blueprint) {
+          const restoredImage = parsed.selectedImage || selectedImage;
+          const restoredName = parsed.imageName || imageName;
+          setSelectedImage(restoredImage);
+          setImageName(restoredName);
           setBlueprint(parsed.blueprint);
           setHistoryStack([parsed.blueprint]);
           setHistoryIndex(0);
           setLastSavedTime(new Date(parsed.savedAt).toLocaleTimeString());
-          if (selectedImage) {
-            generatePhotoshopPSD(selectedImage, parsed.blueprint, options).then(setPsdResult);
+          if (parsed.options) {
+            setOptions((prev) => ({ ...prev, ...parsed.options }));
+          }
+          if (restoredImage) {
+            generatePhotoshopPSD(restoredImage, parsed.blueprint, parsed.options || options)
+              .then(setPsdResult)
+              .catch((err) => {
+                console.error('Failed to rebuild saved PSD:', err);
+                setReconstructionError(err?.message || 'Failed to rebuild the saved project PSD.');
+              });
           }
         }
       }
     } catch (err) {
       console.error('Failed to load saved project:', err);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Clipboard Paste (Ctrl+V / Cmd+V) Event Listener
@@ -396,6 +411,7 @@ export const PSDStudio: React.FC = () => {
     if (!selectedImage) return;
 
     setIsAnalyzing(true);
+    setReconstructionError(null);
     setProgressPercent(10);
     setProgressStage('Uploading Image & Initializing Isolated Session...');
 
@@ -408,6 +424,9 @@ export const PSDStudio: React.FC = () => {
       setProgressPercent(28);
       setProgressStage('Pass 2/12: Complete Object Segmentation & Cutout Isolation...');
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s vision engine timeout
+
       const resp = await fetch('/api/psd/reconstruct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -418,10 +437,20 @@ export const PSDStudio: React.FC = () => {
           imageWidth: imageDimensions.width,
           imageHeight: imageDimensions.height,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData?.error || errData?.details || `Server error (HTTP ${resp.status})`);
+      }
 
       const data = await resp.json();
       const bp: PSDReconstructionBlueprint = data?.blueprint || null;
+      if (!bp) {
+        throw new Error('The reconstruction engine returned an empty blueprint. Please try again.');
+      }
 
       setProgressPercent(42);
       setProgressStage('Pass 3/12: OCR & Typographic Google Font Identification...');
@@ -462,8 +491,15 @@ export const PSDStudio: React.FC = () => {
         setSelectedExportLayerIds(new Set(allIds));
 
         // Generate binary PSD using ag-psd with Ultra Quality Engine
-        const res = await generatePhotoshopPSD(selectedImage, bp, options);
-        setPsdResult(res);
+        try {
+          const res = await generatePhotoshopPSD(selectedImage, bp, options);
+          setPsdResult(res);
+        } catch (psdErr: any) {
+          console.error('PSD binary generation error:', psdErr);
+          setReconstructionError(
+            psdErr?.message || 'PSD binary generation failed. Please try a different image.'
+          );
+        }
       }
 
       setProgressPercent(96);
@@ -477,8 +513,15 @@ export const PSDStudio: React.FC = () => {
       setProgressPercent(100);
       setProgressStage('Ready to Download!');
       await new Promise((r) => setTimeout(r, 300));
-    } catch (err) {
+    } catch (err: any) {
       console.error('PSD Reconstruction Error:', err);
+      const message =
+        err?.name === 'AbortError'
+          ? 'The reconstruction request timed out after 180s. Please try again or use a smaller image.'
+          : err?.message || 'Reconstruction failed unexpectedly. Please try again.';
+      setReconstructionError(message);
+      setProgressPercent(0);
+      setProgressStage('');
     } finally {
       setIsAnalyzing(false);
     }
@@ -1118,6 +1161,38 @@ export const PSDStudio: React.FC = () => {
 
         {/* RIGHT COLUMN: RECONSTRUCTION RESULTS & MAGIC LAYERS STUDIO */}
         <div className="lg:col-span-7 space-y-6">
+          {/* ERROR BANNER */}
+          {reconstructionError && !isAnalyzing && (
+            <div className="p-5 rounded-3xl bg-rose-950/70 border border-rose-500/50 space-y-3 shadow-xl">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 shrink-0">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-extrabold text-rose-200">Reconstruction Problem Detected</h3>
+                  <p className="text-xs text-rose-300/90 leading-relaxed">{reconstructionError}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={runPSDReconstruction}
+                  className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry Reconstruction</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReconstructionError(null)}
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs font-bold transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* PROGRESS HUD BAR */}
           {isAnalyzing && (
             <div className="p-6 rounded-3xl bg-[#0E1628] border border-[#00D8FF]/40 space-y-4 animate-pulse">

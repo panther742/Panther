@@ -387,14 +387,16 @@ export const ImageStudio: React.FC = () => {
             duration: activeDuration,
             cameraMovement,
             particleEffect,
+            loopAnimation,
             fps: videoFps,
-            quality: videoQuality,
+            videoQuality,
             sourceImageUrl: sourceImageUrl || undefined,
             apiKeys: userKeys,
           }),
         },
-        0,
-        0
+        0, // ttlMs = 0 → never cache one-shot generations
+        0, // no auto-retry (regeneration is user-initiated)
+        300000 // AI engines can take up to 5 minutes
       );
 
       setLoadingStepIndex(2);
@@ -535,7 +537,8 @@ export const ImageStudio: React.FC = () => {
           }),
         },
         0,
-        0
+        0,
+        300000
       );
 
       setLoadingStepIndex(2);
@@ -1419,6 +1422,20 @@ export const ImageStudio: React.FC = () => {
                         <span>Regenerate</span>
                       </button>
 
+                      {(currentImages[0]?.mediaType === 'image' || !currentImages[0]?.mediaType) && (
+                        <button
+                          onClick={() => {
+                            setEditingImage(currentImages[0]);
+                            setEditorInitialTool('remove-bg');
+                            setIsEditorOpen(true);
+                          }}
+                          className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 text-white font-extrabold text-xs transition-all flex items-center justify-center gap-2 shadow-lg"
+                        >
+                          <Sliders className="w-4 h-4" />
+                          <span>AI Edit Image</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => handleCopyPrompt(currentImages[0].originalPrompt)}
                         className="py-2.5 px-3 rounded-xl bg-[#060B16] hover:bg-[#111C30] text-slate-200 border border-[#00D8FF]/30 font-bold text-xs transition-all flex items-center justify-center gap-2"
@@ -1584,6 +1601,8 @@ export const ImageStudio: React.FC = () => {
         <ProviderSetupModal
           isOpen={isProviderModalOpen}
           onClose={() => setIsProviderModalOpen(false)}
+          config={providerConfig}
+          onRefreshConfig={fetchProviderConfig}
           userKeys={userKeys}
           onSaveKeys={handleSaveKeys}
         />
@@ -1616,6 +1635,7 @@ export const ImageStudio: React.FC = () => {
           onClose={() => setIsEditorOpen(false)}
           image={editingImage}
           initialTool={editorInitialTool}
+          userKeys={userKeys}
           onSaveEditedImage={(editedUrl) => {
             const newMedia: GeneratedMediaItem = {
               ...editingImage,

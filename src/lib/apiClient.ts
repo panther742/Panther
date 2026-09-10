@@ -52,7 +52,8 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {},
     ttlMs = 10 * 60 * 1000,
-    retries = 1
+    retries = 1,
+    timeoutMs = 30000
   ): Promise<T> {
     const method = options.method || 'GET';
     const bodyStr = options.body ? String(options.body) : undefined;
@@ -74,7 +75,7 @@ class ApiClient {
     // 3. Execute Fetch with timeout and auto-retry
     const executeFetch = async (attemptsLeft: number): Promise<T> => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
         const response = await fetch(endpoint, {
@@ -95,14 +96,23 @@ class ApiClient {
 
         const data = (await response.json()) as T;
 
-        // Cache successful response
-        this.setCache(cacheKey, data, ttlMs);
+        // Cache successful response (ttlMs = 0 disables caching for one-shot operations)
+        if (ttlMs > 0) {
+          this.setCache(cacheKey, data, ttlMs);
+        }
         return data;
       } catch (err: any) {
         clearTimeout(timeoutId);
         if (attemptsLeft > 0 && err.name !== 'AbortError') {
           console.warn(`[ApiClient] Retrying request to ${endpoint}... (${attemptsLeft} left)`);
           return executeFetch(attemptsLeft - 1);
+        }
+        if (err.name === 'AbortError') {
+          const abortErr = new Error(
+            `Request to ${endpoint} timed out after ${Math.round(timeoutMs / 1000)}s. The AI engine may still be processing — please try again or check your provider keys.`
+          );
+          (abortErr as any).name = 'AbortError';
+          throw abortErr;
         }
         throw err;
       }

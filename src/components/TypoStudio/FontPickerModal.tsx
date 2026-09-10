@@ -1,5 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GoogleFont, FontCategory, FontRole } from '../../types';
+
+// UI filter categories in the picker (superset of raw Google Font categories)
+type FontPickerCategory =
+  | FontCategory
+  | 'modern'
+  | 'luxury'
+  | 'minimal'
+  | 'corporate'
+  | 'creative'
+  | 'technology'
+  | 'gaming'
+  | 'fashion'
+  | 'editorial'
+  | 'magazine'
+  | 'wedding'
+  | 'restaurant';
 import { POPULAR_GOOGLE_FONTS, loadGoogleFont } from '../../utils/fontUtils';
 import { Search, X, Check, Type, Sparkles } from 'lucide-react';
 
@@ -19,7 +35,7 @@ export const FontPickerModal: React.FC<FontPickerModalProps> = ({
   onSelectFont,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<FontCategory>('all');
+  const [selectedCategory, setSelectedCategory] = useState<FontPickerCategory>('all');
   const [customPreviewText, setCustomPreviewText] = useState('Panther Typography');
   const [previewSize, setPreviewSize] = useState<number>(24);
 
@@ -66,7 +82,7 @@ export const FontPickerModal: React.FC<FontPickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const categories: { id: string; label: string }[] = [
+  const categories: { id: FontPickerCategory; label: string }[] = [
     { id: 'all', label: 'All Fonts' },
     { id: 'serif', label: 'Serif' },
     { id: 'sans-serif', label: 'Sans Serif' },

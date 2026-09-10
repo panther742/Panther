@@ -1,5 +1,15 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
+// Clamp bounding box values into the safe 0-1000 normalized space
+function clampBBox(bbox: [number, number, number, number]): [number, number, number, number] {
+  const [ymin, xmin, ymax, xmax] = bbox;
+  const cYmin = Math.max(0, Math.min(1000, ymin));
+  const cXmin = Math.max(0, Math.min(1000, xmin));
+  const cYmax = Math.max(cYmin + 1, Math.min(1000, ymax));
+  const cXmax = Math.max(cXmin + 1, Math.min(1000, xmax));
+  return [cYmin, cXmin, cYmax, cXmax];
+}
+
 // Utility helper to robustly parse and normalize bounding boxes from AI JSON or fallback models
 export function normalizeBBox(
   raw: any,
@@ -15,7 +25,7 @@ export function normalizeBBox(
       const n2 = Number(raw[2]);
       const n3 = Number(raw[3]);
       if (!isNaN(n0) && !isNaN(n1) && !isNaN(n2) && !isNaN(n3)) {
-        return [n0, n1, n2, n3];
+        return clampBBox([n0, n1, n2, n3]);
       }
     }
     return fallback;
@@ -40,7 +50,7 @@ export function normalizeBBox(
     const n3 = Number(xmax);
 
     if (!isNaN(n0) && !isNaN(n1) && !isNaN(n2) && !isNaN(n3)) {
-      return [n0, n1, n2, n3];
+      return clampBBox([n0, n1, n2, n3]);
     }
   }
 
@@ -59,7 +69,7 @@ export function normalizeBBox(
         const n2 = split[2];
         const n3 = split[3];
         if (!isNaN(n0) && !isNaN(n1) && !isNaN(n2) && !isNaN(n3)) {
-          return [n0, n1, n2, n3];
+          return clampBBox([n0, n1, n2, n3]);
         }
       }
     }
@@ -590,6 +600,54 @@ export function buildLocalPSDBlueprint(
   };
 }
 
+// Normalize AI color palette responses into a well-formed ColorPaletteSummary
+function normalizeColorPalette(raw: any): ColorPaletteSummary {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const colors = (arr: any): string[] =>
+      Array.isArray(arr) ? arr.filter((c) => typeof c === 'string') : [];
+    const primary = colors(raw.primary);
+    const accent = colors(raw.accent);
+    const neutral = colors(raw.neutral);
+    if (primary.length > 0) {
+      return {
+        primary,
+        accent,
+        neutral,
+        background: typeof raw.background === 'string' ? raw.background : primary[0],
+      };
+    }
+  }
+  if (Array.isArray(raw) && raw.length > 0) {
+    return {
+      primary: raw.filter((c: any) => typeof c === 'string').slice(0, 3),
+      accent: [],
+      neutral: [],
+      background: typeof raw[0] === 'string' ? raw[0] : '#0B0F19',
+    };
+  }
+  return {
+    primary: ['#0B0F19', '#1A233A', '#4F46E5'],
+    accent: ['#38BDF8', '#FFFFFF'],
+    neutral: ['#FFFFFF', '#94A3B8'],
+    background: '#0B0F19',
+  };
+}
+
+// Normalize AI background responses into a well-formed DetectedBackground
+function normalizeBackground(raw: any): DetectedBackground {
+  const primaryColorHex =
+    raw?.primaryColorHex || raw?.color || '#0B0F19';
+  return {
+    type: raw?.type || 'solid',
+    primaryColorHex,
+    secondaryColorHex: raw?.secondaryColorHex,
+    gradientAngle: raw?.gradientAngle,
+    blurRadiusPx: raw?.blurRadiusPx,
+    glassOpacity: raw?.glassOpacity,
+    hasSubtlePattern: raw?.hasSubtlePattern,
+  };
+}
+
 async function callGeminiWithRetry<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
@@ -1025,12 +1083,8 @@ ABSOLUTE SOURCE-OF-TRUTH DIRECTIVES:
       manifest: {
         elements: manifestElements,
       },
-      colorPalette: parsed.colorPalette || ['#0B0F19', '#1A233A', '#4F46E5', '#38BDF8', '#FFFFFF'],
-      background: parsed.background || {
-        type: 'solid',
-        color: '#0B0F19',
-        ambientGlow: { color: '#1E293B', radiusPx: 400, opacity: 0.3 },
-      },
+      colorPalette: normalizeColorPalette(parsed.colorPalette),
+      background: normalizeBackground(parsed.background),
       textLayers,
       shapeLayers,
       objectLayers,

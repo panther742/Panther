@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #060B16;
+    color: #C9D4E5;
+  }
+
+  body {
+    overflow-x: hidden;
+    background-color: #060B16;
+    color: #C9D4E5;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s ease-out forwards;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+/* Custom Electric Blue Glow Utilities */
+.glow-cyan {
+  box-shadow: 0 0 25px rgba(0, 216, 255, 0.25);
+}
+
+.glow-cyan-lg {
+  box-shadow: 0 0 45px rgba(0, 216, 255, 0.4);
+}
+
+.glass-card {
+  background: rgba(17, 28, 48, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 216, 255, 0.15);
+  border-radius: 18px;
+}
+
+/* Custom sleek electric blue scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #060B16;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0E1628;
+  border: 1px solid rgba(0, 216, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00D8FF;
+}
+

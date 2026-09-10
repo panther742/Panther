@@ -1,0 +1,6 @@
+{
+  "name": "Panther Studio",
+  "description": "AI-powered creative suite featuring Image to Editable PSD Reconstruction Engine, Panther Typo Studio, AI Color Studio, Image to Vector Engine, AI Image Generator, and AI Script Converter.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

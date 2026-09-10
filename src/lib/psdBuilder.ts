@@ -4,7 +4,7 @@ import {
   PSDReconstructionBlueprint,
   PSDReconstructionOptions,
   normalizeBBox,
-} from '../server/psdReconstructionService';
+} from './psdShared';
 
 export interface ExtractedAsset {
   id: string;
@@ -908,32 +908,52 @@ export async function generatePhotoshopPSD(
     const layerH = Math.max(10, Math.round(((ymax - ymin) / 1000) * height));
     const scaledFontSize = Math.round((t.fontSizePx || 24) * scale);
 
-    const textCanvas = createCanvas(layerW, layerH);
-    drawTextOnCanvas(
-      textCanvas,
-      t.text,
-      t.fontFamily || t.matchedGoogleFont || 'Inter',
-      t.fontWeight || 'medium',
-      scaledFontSize,
-      t.colorHex || '#FFFFFF',
-      t.textAlign || 'left',
-      t.effects
-        ? {
-            ...t.effects,
-            dropShadow: t.effects.dropShadow
-              ? {
-                  ...t.effects.dropShadow,
-                  blur: Math.round((t.effects.dropShadow.blur || 10) * scale),
-                  offsetX: Math.round((t.effects.dropShadow.offsetX || 0) * scale),
-                  offsetY: Math.round((t.effects.dropShadow.offsetY || 4) * scale),
-                }
-              : undefined,
-            glow: t.effects.glow
-              ? { ...t.effects.glow, radius: Math.round((t.effects.glow.radius || 15) * scale) }
-              : undefined,
-          }
-        : undefined
-    );
+    // Magic-Layer mode: when the "text" content is a placeholder (no real OCR string),
+    // extract the ACTUAL original pixels of this region as the layer content instead
+    // of rendering an empty text box. This preserves what the image really shows.
+    const isPixelPreservingText = !t.text || t.text.trim().length === 0 || t.text.trim() === ' ';
+    let textCanvas: HTMLCanvasElement;
+
+    if (isPixelPreservingText && sourceImg.naturalWidth) {
+      textCanvas = createCanvas(layerW, layerH);
+      const tctx = textCanvas.getContext('2d');
+      if (tctx) {
+        tctx.imageSmoothingEnabled = true;
+        tctx.imageSmoothingQuality = 'high';
+        const sx = (xmin / 1000) * sourceImg.naturalWidth;
+        const sy = (ymin / 1000) * sourceImg.naturalHeight;
+        const sw = Math.max(1, ((xmax - xmin) / 1000) * sourceImg.naturalWidth);
+        const sh = Math.max(1, ((ymax - ymin) / 1000) * sourceImg.naturalHeight);
+        tctx.drawImage(sourceImg, sx, sy, sw, sh, 0, 0, layerW, layerH);
+      }
+    } else {
+      textCanvas = createCanvas(layerW, layerH);
+      drawTextOnCanvas(
+        textCanvas,
+        t.text,
+        t.fontFamily || t.matchedGoogleFont || 'Inter',
+        t.fontWeight || 'medium',
+        scaledFontSize,
+        t.colorHex || '#FFFFFF',
+        t.textAlign || 'left',
+        t.effects
+          ? {
+              ...t.effects,
+              dropShadow: t.effects.dropShadow
+                ? {
+                    ...t.effects.dropShadow,
+                    blur: Math.round((t.effects.dropShadow.blur || 10) * scale),
+                    offsetX: Math.round((t.effects.dropShadow.offsetX || 0) * scale),
+                    offsetY: Math.round((t.effects.dropShadow.offsetY || 4) * scale),
+                  }
+                : undefined,
+              glow: t.effects.glow
+                ? { ...t.effects.glow, radius: Math.round((t.effects.glow.radius || 15) * scale) }
+                : undefined,
+            }
+          : undefined
+      );
+    }
 
     const isHidden = (t as any).hidden || false;
     const colorHex = t.colorHex || '#FFFFFF';
@@ -969,7 +989,8 @@ export async function generatePhotoshopPSD(
     };
     extractedAssets.push(assetObj);
 
-    // PSD Layer created FROM the extracted asset & styled with editable OCR text
+    // PSD Layer created FROM the extracted asset & styled with editable OCR text.
+    // Pixel-preserving magic layers skip the text engine (no real OCR string exists).
     const textLayer: Layer = {
       name: t.name || `Text - ${t.text.slice(0, 15)}`,
       canvas: textCanvas,
@@ -977,14 +998,18 @@ export async function generatePhotoshopPSD(
       top,
       opacity: 1,
       hidden: isHidden,
-      text: {
-        text: t.text,
-        style: {
-          font: { name: t.fontFamily || t.matchedGoogleFont || 'Inter' },
-          fontSize: scaledFontSize,
-          fillColor: { r, g, b },
-        },
-      },
+      ...(isPixelPreservingText
+        ? {}
+        : {
+            text: {
+              text: t.text,
+              style: {
+                font: { name: t.fontFamily || t.matchedGoogleFont || 'Inter' },
+                fontSize: scaledFontSize,
+                fillColor: { r, g, b },
+              },
+            },
+          }),
     };
     typographyLayers.push(textLayer);
   }

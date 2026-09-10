@@ -55,7 +55,7 @@ import {
   DetectedShapeLayer,
   DetectedObjectLayer,
   normalizeBBox,
-} from '../../server/psdReconstructionService';
+} from '../../lib/psdShared';
 import { generatePhotoshopPSD, GeneratedPSDResult, ExtractedAsset } from '../../lib/psdBuilder';
 
 // Popular Google Fonts list for dropdown selection

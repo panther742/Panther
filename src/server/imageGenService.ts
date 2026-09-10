@@ -469,7 +469,7 @@ Return strictly JSON with schema:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: `User Prompt: "${rawPrompt}". Style Requested: "${stylePreset || 'realistic'}".
 Analyze entities, action, environment and expand into ultra-realistic 8K photorealistic prompt with negative prompts.`,
       config: {
@@ -543,7 +543,7 @@ Your task:
 Return strictly JSON with string field "optimizedPrompt".`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: `Previous Scene Description: "${previousPrompt}"
 User Edit Command: "${userEditMessage}"
 Target Style: "${stylePreset || 'realistic'}"
@@ -618,7 +618,7 @@ export async function editImageWithAI(params: {
 
       const instruction = `${editPrompt} Keep the original subject, composition, and aspect ratio intact. Output the edited image directly.`;
 
-      const modelsToTry = ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image'];
+      const modelsToTry = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation'];
       let imageBase64List: string[] = [];
       let successfulModel = '';
       let lastError: any = null;
@@ -1009,7 +1009,7 @@ export async function generateImagesWithAdapter(params: ImageGenParams): Promise
       });
       const fullPrompt = `High quality artwork: ${optimizedPrompt}. Style: ${stylePreset}.`;
 
-      const modelsToTry = ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image'];
+      const modelsToTry = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation'];
       let imageBase64List: string[] = [];
       let lastError: any = null;
       let successfulModel = '';
@@ -1022,7 +1022,7 @@ export async function generateImagesWithAdapter(params: ImageGenParams): Promise
               aspectRatio: (aspectRatio as any) || '1:1',
             },
           };
-          if (modelName === 'gemini-3.1-flash-image') {
+          if (modelName === 'gemini-2.5-flash-image') {
             configObj.imageConfig.imageSize = '1K';
           }
 

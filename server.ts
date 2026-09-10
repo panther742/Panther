@@ -185,7 +185,7 @@ app.post('/api/colors/ai-generate', async (req, res) => {
     const systemInstruction = `You are Panther Studio's expert AI Colorist. Generate a harmonized, professional color palette of 5 distinct colors based on the user's prompt or concept. Return JSON containing an array of 5 hex color codes and a title.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: `Generate a 5-color palette for the topic: "${prompt}". Style/Harmonies requested: "${paletteType || 'balanced'}".`,
       config: {
         systemInstruction,

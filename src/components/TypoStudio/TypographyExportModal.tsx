@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TypographyDesign, TypographyExportFormat } from '../../types';
+import { buildPdfWithPng, buildEpsWithPng, buildTextDxf, buildTypographyPSD } from '../../utils/exportFormats';
 import { X, Download, FileText, CheckCircle2 } from 'lucide-react';
 
 interface TypographyExportModalProps {
@@ -18,20 +19,119 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
   const [dpi, setDpi] = useState<number>(300);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportedSuccess, setExportedSuccess] = useState<boolean>(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const displayText = design.customText || userText || 'Panther Studio';
 
-  const handleDownload = () => {
-    setIsExporting(true);
+  // Render the design onto a canvas at the requested DPI (base 800x400 pt).
+  const renderCanvas = async (): Promise<HTMLCanvasElement> => {
+    const scale = dpi / 72;
+    const width = Math.round(800 * scale);
+    const height = Math.round(400 * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas rendering is not available in this browser.');
 
-    setTimeout(() => {
+    try {
+      await document.fonts.ready;
+    } catch {
+      // older browsers without FontFaceSet — continue with fallback fonts
+    }
+
+    if (!transparentBg) {
+      ctx.fillStyle = design.palette.backgroundColor;
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    const appliedText =
+      design.textTransform === 'uppercase'
+        ? displayText.toUpperCase()
+        : design.textTransform === 'lowercase'
+        ? displayText.toLowerCase()
+        : displayText;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.save();
+
+    // Gradient text fill
+    if (design.gradientFill) {
+      const grad = ctx.createLinearGradient(0, 0, width, 0);
+      const stops = design.gradientFill.split(',').map((s) => s.trim());
+      if (stops.length >= 2) {
+        grad.addColorStop(0, stops[0]);
+        grad.addColorStop(1, stops[stops.length - 1]);
+        ctx.fillStyle = grad;
+      } else {
+        ctx.fillStyle = design.palette.primaryColor;
+      }
+    } else {
+      ctx.fillStyle = design.palette.primaryColor;
+    }
+
+    ctx.font = `${design.fontWeight} ${Math.max(24, design.fontSize * 1.5 * scale)}px "${design.fontFamily}", sans-serif`;
+    ctx.letterSpacing = `${design.letterSpacing * scale}px` as any;
+
+    // Glow / shadow
+    if (design.glowRadius > 0) {
+      ctx.shadowColor = design.glowColor;
+      ctx.shadowBlur = design.glowRadius * scale;
+    }
+    if (design.shadowBlur > 0) {
+      ctx.shadowColor = design.shadowColor;
+      ctx.shadowBlur = design.shadowBlur * scale;
+      ctx.shadowOffsetX = design.shadowOffsetX * scale;
+      ctx.shadowOffsetY = design.shadowOffsetY * scale;
+    }
+
+    // Stroke
+    if (design.strokeWidth > 0) {
+      ctx.lineWidth = design.strokeWidth * scale;
+      ctx.strokeStyle = design.strokeColor;
+      ctx.strokeText(appliedText, width / 2, height / 2);
+    }
+
+    ctx.fillText(appliedText, width / 2, height / 2);
+    ctx.restore();
+
+    if (design.tagline) {
+      ctx.fillStyle = design.palette.secondaryColor;
+      ctx.font = `${Math.max(10, 14 * scale)}px "Inter", sans-serif`;
+      ctx.fillText(
+        design.tagline.toUpperCase(),
+        width / 2,
+        height / 2 + Math.max(40, 80 * scale)
+      );
+    }
+
+    return canvas;
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownload = async () => {
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
       const fileName = `${design.styleName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
 
-      if (format === 'svg' || format === 'dxf' || format === 'eps' || format === 'ai' || format === 'cdr') {
+      // --- Real vector SVG (also the honest CDR-compatible path) ---
+      if (format === 'svg' || format === 'cdr') {
         const bgRect = transparentBg
           ? ''
           : `<rect width="800" height="400" fill="${design.palette.backgroundColor}" />`;
-
         const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
   <style>
@@ -51,71 +151,95 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
   <text x="400" y="200" class="typo-text">${displayText}</text>
   ${design.tagline ? `<text x="400" y="260" font-family="sans-serif" font-size="14" fill="${design.palette.secondaryColor}" letter-spacing="4" text-anchor="middle">${design.tagline}</text>` : ''}
 </svg>`;
-
-        const blob = new Blob([svgContent], {
-          type: format === 'svg' ? 'image/svg+xml' : 'application/octet-stream',
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${fileName}.${format}`;
-        a.click();
-        URL.revokeObjectURL(url);
+        const cdrSvg =
+          format === 'cdr'
+            ? svgContent.replace(
+                '<svg ',
+                '<svg xmlns:cdr="http://schemas.corel.com/coreldraw/2011/cdr" cdr:version="18.0" cdr:format="CorelDraw Vector Exchange" '
+              )
+            : svgContent;
+        downloadBlob(
+          new Blob([cdrSvg], { type: 'image/svg+xml' }),
+          `${fileName}${format === 'cdr' ? '-corel-compatible' : ''}.svg`
+        );
       } else {
-        // High resolution PNG / PDF / PSD canvas render
-        const canvas = document.createElement('canvas');
-        canvas.width = 1600;
-        canvas.height = 900;
-        const ctx = canvas.getContext('2d');
+        // Raster-render the design once and produce REAL files per format
+        const canvas = await renderCanvas();
+        const pngDataUrl = canvas.toDataURL('image/png');
 
-        if (ctx) {
-          if (!transparentBg) {
-            ctx.fillStyle = design.palette.backgroundColor;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-          }
-
-          ctx.fillStyle = design.palette.primaryColor;
-          ctx.font = `${design.fontWeight} 64px "${design.fontFamily}", sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-
-          if (design.textTransform === 'uppercase') {
-            ctx.fillText(displayText.toUpperCase(), canvas.width / 2, canvas.height / 2);
-          } else if (design.textTransform === 'lowercase') {
-            ctx.fillText(displayText.toLowerCase(), canvas.width / 2, canvas.height / 2);
-          } else {
-            ctx.fillText(displayText, canvas.width / 2, canvas.height / 2);
-          }
-
-          if (design.tagline) {
-            ctx.fillStyle = design.palette.secondaryColor;
-            ctx.font = `600 24px sans-serif`;
-            ctx.fillText(design.tagline.toUpperCase(), canvas.width / 2, canvas.height / 2 + 80);
-          }
-
-          const dataUrl = canvas.toDataURL('image/png');
-          const a = document.createElement('a');
-          a.href = dataUrl;
-          a.download = `${fileName}.${format === 'pdf' ? 'pdf' : format === 'psd' ? 'psd' : 'png'}`;
-          a.click();
+        if (format === 'png') {
+          downloadBlob(await (await fetch(pngDataUrl)).blob(), `${fileName}.png`);
+        } else if (format === 'pdf' || format === 'ai') {
+          // Real PDF 1.4 with embedded image. Illustrator opens PDF-based .ai
+          // files natively, so the same payload is valid for both formats.
+          const pdf = buildPdfWithPng(pngDataUrl, 800, 400);
+          downloadBlob(new Blob([pdf], { type: 'application/pdf' }), `${fileName}.${format}`);
+        } else if (format === 'psd') {
+          const scale = dpi / 72;
+          const psdBytes = buildTypographyPSD(
+            canvas.width,
+            canvas.height,
+            [
+              {
+                text: displayText,
+                fontFamily: design.fontFamily,
+                fontSizePx: Math.max(24, design.fontSize * 1.5 * scale),
+                colorHex: design.palette.primaryColor,
+                fontWeight: design.fontWeight,
+                x: Math.round(canvas.width * 0.1),
+                y: Math.round(canvas.height * 0.42),
+              },
+              ...(design.tagline
+                ? [
+                    {
+                      text: design.tagline.toUpperCase(),
+                      fontFamily: 'Inter',
+                      fontSizePx: Math.max(10, 14 * scale),
+                      colorHex: design.palette.secondaryColor,
+                      fontWeight: 600,
+                      x: Math.round(canvas.width * 0.1),
+                      y: Math.round(canvas.height * 0.62),
+                    },
+                  ]
+                : []),
+            ],
+            transparentBg ? null : design.palette.backgroundColor
+          );
+          downloadBlob(new Blob([psdBytes], { type: 'application/octet-stream' }), `${fileName}.psd`);
+        } else if (format === 'eps') {
+          const eps = await buildEpsWithPng(pngDataUrl, canvas.width, canvas.height);
+          downloadBlob(new Blob([eps], { type: 'application/postscript' }), `${fileName}.eps`);
+        } else if (format === 'dxf') {
+          // Real DXF with TEXT entities (AutoCAD / LibreCAD / laser software)
+          const dxf = buildTextDxf([
+            { text: displayText, x: 400, y: 200, height: design.fontSize * 1.5, colorIndex: 4 },
+            ...(design.tagline
+              ? [{ text: design.tagline.toUpperCase(), x: 400, y: 130, height: 14, colorIndex: 3 }]
+              : []),
+          ]);
+          downloadBlob(new Blob([dxf], { type: 'application/dxf' }), `${fileName}.dxf`);
         }
       }
 
-      setIsExporting(false);
       setExportedSuccess(true);
       setTimeout(() => setExportedSuccess(false), 3000);
-    }, 600);
+    } catch (err: any) {
+      console.error('Typography export error:', err);
+      setExportError(err?.message || 'Export failed unexpectedly. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const formatsList: Array<{ id: TypographyExportFormat; label: string; badge: string; desc: string }> = [
     { id: 'png', label: 'PNG Image', badge: '300 DPI', desc: 'High-res raster with transparency' },
-    { id: 'svg', label: 'SVG Vector', badge: 'Scalable', desc: 'Real Bezier paths for web & print' },
-    { id: 'pdf', label: 'PDF Vector', badge: 'Print Ready', desc: 'CMYK print production ready' },
-    { id: 'psd', label: 'PSD Photoshop', badge: 'Layered', desc: 'Adobe Photoshop editable layers' },
-    { id: 'ai', label: 'AI Illustrator', badge: 'Vector', desc: 'Adobe Illustrator CS/CC compatible' },
-    { id: 'eps', label: 'EPS PostScript', badge: 'Sign Making', desc: 'Vinyl plotters & large format print' },
-    { id: 'dxf', label: 'DXF CAD Path', badge: 'Laser / CNC', desc: 'AutoCAD, LightBurn, Fusion 360' },
-    { id: 'cdr', label: 'CDR CorelDraw', badge: 'Vector', desc: 'CorelDraw X7/2026 graphics suite' },
+    { id: 'svg', label: 'SVG Vector', badge: 'Scalable', desc: 'Real vector text for web & print' },
+    { id: 'pdf', label: 'PDF Document', badge: 'Print Ready', desc: 'Valid PDF 1.4 with embedded render' },
+    { id: 'psd', label: 'PSD Photoshop', badge: 'Layered', desc: 'Real layered PSD with editable text' },
+    { id: 'ai', label: 'AI Illustrator', badge: 'Print', desc: 'PDF-based .ai — opens in Illustrator' },
+    { id: 'eps', label: 'EPS PostScript', badge: 'Sign Making', desc: 'Valid EPS with embedded render' },
+    { id: 'dxf', label: 'DXF CAD Text', badge: 'Laser / CNC', desc: 'Real TEXT entities (AutoCAD)' },
+    { id: 'cdr', label: 'CorelDraw SVG', badge: 'SVG', desc: 'CorelDraw-importable vector SVG' },
   ];
 
   return (
@@ -191,6 +315,12 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
             </select>
           </div>
         </div>
+
+        {exportError && (
+          <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-bold animate-fade-in">
+            {exportError}
+          </div>
+        )}
 
         {exportedSuccess && (
           <div className="p-3 rounded-xl bg-[#00D8FF]/15 border border-[#00D8FF]/40 text-[#5FFFF7] text-xs font-bold flex items-center gap-2 animate-fade-in">

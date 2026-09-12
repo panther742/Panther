@@ -41,6 +41,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'logo': 'लोगो',
     'creative': 'क्रिएटिव',
     'agency': 'एजेंसी',
+    'hello': 'नमस्ते',
+    'thank you': 'धन्यवाद',
+    'good': 'अच्छा',
   },
   gu: {
     'panther studio': 'પેંથર સ્ટુડિયો',
@@ -57,6 +60,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'good morning': 'શુભ સવાર',
     'welcome': 'આવકારો / સ્વાગત છે',
     'best graphic designer': 'શ્રેષ્ઠ ગ્રાફિક ડિઝાઇનર',
+    'hello': 'નમસ્તે',
+    'thank you': 'આભાર',
+    'good': 'સારું',
   },
   mr: {
     'panther studio': 'पैंथर स्टुडिओ',
@@ -65,6 +71,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'ग्राफिक डिझायनर',
     'good morning': 'शुभ सकाळ',
     'welcome': 'सुस्वागतम',
+    'hello': 'नमस्कार',
+    'thank you': 'धन्यवाद',
+    'good': 'चांगले',
   },
   pa: {
     'panther studio': 'ਪੈਂਥਰ ਸਟੂਡੀਓ',
@@ -73,6 +82,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'ਗ੍ਰਾਫਿਕ ਡਿਜ਼ਾਇਨਰ',
     'good morning': 'ਸ਼ੁਭ ਸਵੇਰ',
     'welcome': 'ਜੀ ਆਇਆਂ ਨੂੰ',
+    'hello': 'ਸਤ ਸ੍ਰੀ ਅਕਾਲ',
+    'thank you': 'ਧੰਨਵਾਦ',
+    'good': 'ਚੰਗਾ',
   },
   bn: {
     'panther studio': 'প্যান্থার স্টুডিও',
@@ -81,6 +93,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'গ্রাফিক ডিজাইনার',
     'good morning': 'শুভ সকাল',
     'welcome': 'স্বাগতম',
+    'hello': 'নমস্কার',
+    'thank you': 'ধন্যবাদ',
+    'good': 'ভালো',
   },
   ta: {
     'panther studio': 'பேந்தர் ஸ்டுடியோ',
@@ -89,6 +104,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'கிராஃபிக் டிசைனர்',
     'good morning': 'காலை வணக்கம்',
     'welcome': 'நல்வரவு',
+    'hello': 'வணக்கம்',
+    'thank you': 'நன்றி',
+    'good': 'நல்ல',
   },
   te: {
     'panther studio': 'పాంథర్ స్టూడియో',
@@ -97,6 +115,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'గ్రాఫిక్ డిజైనర్',
     'good morning': 'శుభోదయం',
     'welcome': 'స్వాగతం',
+    'hello': 'నమస్కారం',
+    'thank you': 'ధన్యవాదాలు',
+    'good': 'మంచి',
   },
   ur: {
     'panther studio': 'پینتھر اسٹوڈیو',
@@ -105,6 +126,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'گرافک ڈیزائنر',
     'good morning': 'صبح بخیر',
     'welcome': 'خوش آمدید',
+    'hello': 'السلام علیکم',
+    'thank you': 'شکریہ',
+    'good': 'اچھا',
   },
   ar: {
     'panther studio': 'بانثر ستوديو',
@@ -113,6 +137,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'مصمم جرافيك',
     'good morning': 'صباح الخير',
     'welcome': 'أهلاً وسهلاً',
+    'hello': 'مرحبا',
+    'thank you': 'شكرا',
+    'good': 'جيد',
   },
   ja: {
     'panther studio': 'パンサースタジオ',
@@ -121,6 +148,9 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': 'グラフィックデザイナー',
     'good morning': 'おはようございます',
     'welcome': 'ようこそ',
+    'hello': 'こんにちは',
+    'thank you': 'ありがとう',
+    'good': '良い',
   },
   zh: {
     'panther studio': 'Panther 工作室',
@@ -129,24 +159,36 @@ const CLIENT_FALLBACK_MAPS: Record<string, Record<string, string>> = {
     'graphic designer': '平面设计师',
     'good morning': '早上好',
     'welcome': '欢迎',
+    'hello': '你好',
+    'thank you': '谢谢',
+    'good': '好',
   },
   es: {
     'panther studio': 'Panther Studio',
     'good morning': 'Buenos días',
     'welcome': 'Bienvenido',
     'graphic designer': 'Diseñador Gráfico',
+    'hello': 'Hola',
+    'thank you': 'Gracias',
+    'good': 'Bueno',
   },
   fr: {
     'panther studio': 'Panther Studio',
     'good morning': 'Bonjour',
     'welcome': 'Bienvenue',
     'graphic designer': 'Graphiste',
+    'hello': 'Bonjour',
+    'thank you': 'Merci',
+    'good': 'Bon',
   },
   de: {
     'panther studio': 'Panther Studio',
     'good morning': 'Guten Morgen',
     'welcome': 'Willkommen',
     'graphic designer': 'Grafikdesigner',
+    'hello': 'Hallo',
+    'thank you': 'Danke',
+    'good': 'Gut',
   },
 };
 
@@ -287,11 +329,15 @@ function getFallbackConversion(req: ScriptConverterRequest): ScriptConverterResp
   const lowerInput = cleanInput.toLowerCase();
 
   const langMap = CLIENT_FALLBACK_MAPS[targetLang] || {};
-  let output = langMap[lowerInput];
 
+  // Exact match first, then phrase-by-phrase replacement (longest phrases
+  // first so "panther studio" wins over "panther"/"studio").
+  let output = langMap[lowerInput];
   if (!output) {
-    // If exact match not found, check partial word matches or keep text
-    output = cleanInput;
+    const phrases = Object.keys(langMap).sort((a, b) => b.length - a.length);
+    const escaped = phrases.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const combined = new RegExp(escaped.join('|'), 'gi');
+    output = cleanInput.replace(combined, (match) => langMap[match.toLowerCase()] || match);
   }
 
   const variations: Record<DesignerVariationStyle, string> = {
@@ -308,7 +354,7 @@ function getFallbackConversion(req: ScriptConverterRequest): ScriptConverterResp
   return {
     primaryOutput: output,
     pronunciationGuide: cleanInput,
-    explanation: `Smart ${mode} conversion for ${targetLang.toUpperCase()} script.`,
+    explanation: `Smart ${mode} conversion for ${targetLang.toUpperCase()} script (offline dictionary).`,
     detectedSourceLang: 'English',
     designerVariations: variations,
   };

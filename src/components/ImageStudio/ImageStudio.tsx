@@ -80,8 +80,6 @@ const PROVIDER_OPTIONS = [
   { id: 'runway', label: 'Runway (Gen-2 / Gen-3 Alpha)' },
   { id: 'luma', label: 'Luma Dream Machine' },
   { id: 'pika', label: 'Pika Labs AI' },
-  { id: 'pixverse', label: 'PixVerse AI Video' },
-  { id: 'svd', label: 'Stable Video Diffusion' },
   { id: 'stability', label: 'Stability AI (SDXL)' },
   { id: 'pollinations', label: 'FLUX.1 (Pollinations AI Engine)' },
   { id: 'replicate', label: 'Replicate AI Engine' },

@@ -25,6 +25,22 @@ export const BrandKitManager: React.FC<BrandKitManagerProps> = ({ currentPairing
     }
   }, []);
 
+  // Record every pairing change into Recent History (previously the history
+  // tab was never populated — nothing ever wrote to it).
+  useEffect(() => {
+    if (!currentPairing?.id) return;
+    setHistory((prev) => {
+      const withoutDup = prev.filter((p) => p.id !== currentPairing.id);
+      const next = [{ ...currentPairing, createdAt: Date.now() }, ...withoutDup].slice(0, 24);
+      try {
+        localStorage.setItem('panther_typo_hist', JSON.stringify(next));
+      } catch (e) {
+        console.warn('Failed persisting typography history', e);
+      }
+      return next;
+    });
+  }, [currentPairing]);
+
   // Sync favorites & history
   const saveToFavorites = () => {
     const exists = favorites.some((f) => f.id === currentPairing.id);

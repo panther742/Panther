@@ -68,7 +68,7 @@ export const AiPaletteGenerator: React.FC<AiPaletteGeneratorProps> = ({
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <span>Gemini AI Palette Synthesizer</span>
             <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-[#00D8FF]/20 text-[#00D8FF] rounded-full border border-[#00D8FF]/30">
-              Gemini 3.6
+              Gemini 2.5 Flash
             </span>
           </h3>
           <p className="text-xs text-[#C9D4E5]/80">

@@ -27,18 +27,22 @@ export const TypographyGenerator: React.FC = () => {
   const [editingDesign, setEditingDesign] = useState<TypographyDesign | null>(null);
   const [downloadingDesign, setDownloadingDesign] = useState<TypographyDesign | null>(null);
 
+  // Live-editor saves: edited designs override the generated ones (keyed by id)
+  const [designOverrides, setDesignOverrides] = useState<Map<string, TypographyDesign>>(new Map());
+
   // Generate Typography Designs based on text, target count, category, search
   const generatedDesigns = useMemo(() => {
     return generateTypographyDesigns(inputText, targetCount, selectedCategory, searchQuery);
   }, [inputText, targetCount, selectedCategory, searchQuery]);
 
-  // Filtered designs including favorites toggle
+  // Filtered designs including favorites toggle + applied live-editor changes
   const displayedDesigns = useMemo(() => {
+    const withOverrides = generatedDesigns.map((d) => designOverrides.get(d.id) ?? d);
     if (showOnlyFavorites) {
-      return generatedDesigns.filter((d) => favorites.has(d.id));
+      return withOverrides.filter((d) => favorites.has(d.id));
     }
-    return generatedDesigns;
-  }, [generatedDesigns, showOnlyFavorites, favorites]);
+    return withOverrides;
+  }, [generatedDesigns, showOnlyFavorites, favorites, designOverrides]);
 
   const handleToggleFavorite = (id: string) => {
     setFavorites((prev) => {
@@ -53,7 +57,9 @@ export const TypographyGenerator: React.FC = () => {
   };
 
   const handleSaveEditedDesign = (updatedDesign: TypographyDesign) => {
-    // Override the design in active memory
+    // Persist the live-edited design so it renders in the grid and is used
+    // by the export modal (previously edits were silently discarded).
+    setDesignOverrides((prev) => new Map(prev).set(updatedDesign.id, updatedDesign));
     setEditingDesign(null);
   };
 

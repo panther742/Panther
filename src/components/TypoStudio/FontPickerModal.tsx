@@ -118,7 +118,7 @@ export const FontPickerModal: React.FC<FontPickerModalProps> = ({
                 Select Font for <span className="capitalize text-[#D4AF37]">{targetRole}</span>
               </h2>
               <p className="text-xs text-slate-400">
-                Search & preview 1500+ Google Fonts in real time
+                Search & preview 65 hand-picked Google Fonts in real time
               </p>
             </div>
           </div>

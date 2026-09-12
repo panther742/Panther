@@ -54,11 +54,9 @@ export const PROVIDER_CAPABILITIES: Record<string, { name: string; supportedMode
   'auto': { name: 'Auto (Best Available Engine)', supportedModes: ['image', 'gif', 'video'] },
   'google-imagen': { name: 'Google Veo / Imagen 3', supportedModes: ['image', 'video'] },
   'openai-dalle': { name: 'OpenAI (DALL-E 3 / Sora)', supportedModes: ['image', 'video'] },
-  'runway': { name: 'Runway (Gen-2 / Gen-3)', supportedModes: ['image', 'gif', 'video'] },
+  'runway': { name: 'Runway (Gen-2 / Gen-3)', supportedModes: ['gif', 'video'] },
   'luma': { name: 'Luma Dream Machine', supportedModes: ['gif', 'video'] },
   'pika': { name: 'Pika Labs', supportedModes: ['gif', 'video'] },
-  'pixverse': { name: 'PixVerse AI', supportedModes: ['gif', 'video'] },
-  'svd': { name: 'Stable Video Diffusion', supportedModes: ['gif', 'video'] },
   'stability': { name: 'Stability AI (SDXL)', supportedModes: ['image'] },
   'pollinations': { name: 'Pollinations AI Engine', supportedModes: ['image', 'gif', 'video'] },
   'replicate': { name: 'Replicate AI Engine', supportedModes: ['image', 'gif', 'video'] },
@@ -82,7 +80,6 @@ export function getProviderConfig(apiKeys?: any) {
   if (hasRunwayKey) availableProviders.push('runway');
   if (hasLumaKey) availableProviders.push('luma');
   if (hasPikaKey) availableProviders.push('pika');
-  availableProviders.push('pixverse', 'svd');
   if (hasStabilityKey) availableProviders.push('stability');
   if (hasReplicateKey) availableProviders.push('replicate');
   if (hasHuggingFaceKey) availableProviders.push('huggingface');
@@ -818,37 +815,53 @@ export async function generateImagesWithAdapter(params: ImageGenParams): Promise
     // 1. Google Veo / Gemini API Video Generation
     if ((videoProviderToUse === 'google-imagen' || videoProviderToUse === 'veo') && geminiKey) {
       providerUsedLabel = 'Google Veo AI Video';
-      try {
-        const ai = new GoogleGenAI({
-          apiKey: geminiKey,
-          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-        });
+      const veoModelsToTry = ['veo-3.1-generate-001', 'veo-3.0-generate-001', 'veo-2.0-generate-001'];
+      for (const veoModel of veoModelsToTry) {
+        if (generatedVideoUrl) break;
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: geminiKey,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+          });
 
-        // Request Google Veo / Gemini Video Generation model
-        const response = await ai.models.generateContent({
-          model: 'veo-2.0-generate-001',
-          contents: sourceImageUrl
-            ? [
-                {
-                  role: 'user',
-                  parts: [
-                    { text: `Image to Video generation: Use provided source image as frame 0 initial frame. Predict and generate realistic motion: ${fullMotionPrompt}` },
-                    { inlineData: { mimeType: 'image/jpeg', data: sourceImageUrl.replace(/^data:image\/\w+;base64,/, '') } }
-                  ]
-                }
-              ]
-            : `Text to Video generation: ${fullMotionPrompt}`,
-        });
+          // Request Google Veo / Gemini Video Generation model
+          const response = await ai.models.generateContent({
+            model: veoModel,
+            contents: sourceImageUrl
+              ? [
+                  {
+                    role: 'user',
+                    parts: [
+                      { text: `Image to Video generation: Use provided source image as frame 0 initial frame. Predict and generate realistic motion: ${fullMotionPrompt}` },
+                      { inlineData: { mimeType: 'image/jpeg', data: sourceImageUrl.replace(/^data:image\/\w+;base64,/, '') } }
+                    ]
+                  }
+                ]
+              : `Text to Video generation: ${fullMotionPrompt}`,
+          });
 
-        const resText = response.text || '';
-        if (resText.includes('http') || resText.includes('data:video')) {
-          const match = resText.match(/https?:\/\/[^\s"]+\.(mp4|webm|mov)/i) || resText.match(/data:video\/[a-zA-Z0-9_-]+;base64,[A-Za-z0-9+/=]+/);
-          if (match) {
-            generatedVideoUrl = match[0];
+          // Veo returns video bytes via parts; accept base64 payloads or URLs
+          const parts = response.candidates?.[0]?.content?.parts || [];
+          for (const part of parts) {
+            if (part.inlineData?.data) {
+              generatedVideoUrl = `data:${part.inlineData.mimeType || 'video/mp4'};base64,${part.inlineData.data}`;
+              break;
+            }
+            if ((part.videoMetadata as any)?.videoUri) {
+              generatedVideoUrl = (part.videoMetadata as any).videoUri;
+              break;
+            }
           }
+          if (!generatedVideoUrl) {
+            const resText = response.text || '';
+            const match =
+              resText.match(/https?:\/\/[^\s"]+\.(mp4|webm|mov)/i) ||
+              resText.match(/data:video\/[a-zA-Z0-9_-]+;base64,[A-Za-z0-9+/=]+/);
+            if (match) generatedVideoUrl = match[0];
+          }
+        } catch (err: any) {
+          console.warn(`[Google Veo Log] Veo model ${veoModel} notice:`, err?.message || err);
         }
-      } catch (err: any) {
-        console.warn('[Google Veo Log] Veo API notice:', err?.message || err);
       }
     }
 

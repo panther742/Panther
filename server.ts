@@ -14,6 +14,7 @@ import {
 } from './src/server/imageGenService';
 import { convertScriptWithAI } from './src/server/scriptConverterService';
 import { reconstructImageToPSDBlueprint, buildLocalPSDBlueprint } from './src/server/psdReconstructionService';
+import { buildColorVectorSvg } from './src/utils/vectorUtils';
 
 const app = express();
 const PORT = 3000;
@@ -167,6 +168,59 @@ app.post('/api/psd/reconstruct', async (req, res) => {
   }
 });
 
+// Deterministic local palette synthesizer — offline fallback so the palette
+// tool always produces a good-looking result even without a Gemini key.
+function synthesizeLocalPalette(prompt: string, paletteType?: string): { title: string; colors: string[] } {
+  let seed = 0;
+  for (let i = 0; i < prompt.length; i++) {
+    seed = (seed * 31 + prompt.charCodeAt(i)) >>> 0;
+  }
+  const rand = (n: number) => {
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    return seed % n;
+  };
+
+  const baseHue = rand(360);
+  const kind = (paletteType || '').toLowerCase();
+  const hueOffsets =
+    kind.includes('complement') || kind.includes('split')
+      ? [0, 180]
+      : kind.includes('triad')
+      ? [0, 120, 240]
+      : kind.includes('analog')
+      ? [0, 30, 60, -30, -60]
+      : kind.includes('mono')
+      ? [0, 0, 0, 0, 0]
+      : [0, 30, 60, 150, 210]; // balanced default
+  const lightnesses = [28, 42, 55, 68, 82];
+
+  const hslToHex = (h: number, s: number, l: number): string => {
+    h = ((h % 360) + 360) % 360;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; }
+    else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; }
+    else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; }
+    else { r = c; b = x; }
+    const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+
+  const saturations = [0.75, 0.62, 0.5, 0.4, 0.85];
+  const colors: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const off = hueOffsets[i] !== undefined ? hueOffsets[i] : hueOffsets[rand(hueOffsets.length)];
+    colors.push(hslToHex(baseHue + off, saturations[i], lightnesses[i] / 100));
+  }
+
+  const title = `${prompt.trim().slice(0, 42) || 'Panther'} — Local Harmony`;
+  return { title, colors };
+}
+
 // AI Color Palette Generation via Gemini API with Caching
 app.post('/api/colors/ai-generate', async (req, res) => {
   try {
@@ -179,6 +233,14 @@ app.post('/api/colors/ai-generate', async (req, res) => {
     const cachedResult = getCachedResponse(cacheKey);
     if (cachedResult) {
       return res.json({ success: true, data: cachedResult, cached: true });
+    }
+
+    // Offline-first guard: without a key or network, synthesize locally so
+    // the tool still returns a professional palette instead of an error.
+    if (!process.env.GEMINI_API_KEY) {
+      const fallback = synthesizeLocalPalette(String(prompt), paletteType);
+      setCachedResponse(cacheKey, fallback);
+      return res.json({ success: true, data: fallback, fallback: true });
     }
 
     const ai = getGeminiClient();
@@ -213,11 +275,15 @@ app.post('/api/colors/ai-generate', async (req, res) => {
 
     res.json({ success: true, data: parsed });
   } catch (err: any) {
-    console.error('Gemini Color Generation Error:', err);
-    res.status(500).json({
-      error: 'Failed to generate palette via AI',
-      details: err.message || 'Unknown error',
-    });
+    console.error('Gemini Color Generation Error:', err?.message || err);
+    // Network / quota failure: degrade gracefully to the local synthesizer
+    // instead of failing the tool.
+    try {
+      const fallback = synthesizeLocalPalette(String(req.body?.prompt || 'Panther'), req.body?.paletteType);
+      res.json({ success: true, data: fallback, fallback: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to generate palette' });
+    }
   }
 });
 
@@ -234,12 +300,14 @@ app.post('/api/vectorize', (req, res) => {
 
     const traceOptions = {
       threshold: settings?.threshold || 128,
-      turnPolicy: (potrace as any).POTRACE_TURNPOLICY_MINORITY || 'minority',
+      turnPolicy: settings?.turnPolicy || 'minority',
       turdSize: settings?.turdSize || 4,
       optCurve: true,
       optTolerance: 0.4,
-      blackOnWhite: !settings?.transparentBg,
-      color: settings?.colorMode === 'bw' ? '#0F172A' : '#7C3AED',
+      // Image is normalized below to BLACK shapes on a WHITE background, so
+      // potrace must trace dark pixels (its default blackOnWhite direction).
+      blackOnWhite: true,
+      color: (settings?.colorMode || 'bw') === 'bw' ? '#0F172A' : '#7C3AED',
       background: settings?.transparentBg ? 'transparent' : '#FFFFFF',
     };
 
@@ -257,9 +325,62 @@ app.post('/api/vectorize', (req, res) => {
           return res.status(500).json({ error: 'Vectorization failed: could not decode image pixels' });
         }
 
+        // Preprocess pixels exactly like the in-browser vectorizer so both
+        // engines produce identical output:
+        //   1. optional background removal (corner chroma key)
+        //   2. black/white thresholding or color posterization
+        //   3. transparent regions become white (potrace traces black on white)
+        const work = Buffer.from(pixels); // copy, never mutate jimp's buffer
+
+        if (settings?.removeBackground) {
+          const px = (idx: number) => [work[idx], work[idx + 1], work[idx + 2]];
+          const c1 = px(0);
+          const c2 = px((width - 1) * 4);
+          const c3 = px((height - 1) * width * 4);
+          const c4 = px(((height - 1) * width + (width - 1)) * 4);
+          const bgR = (c1[0] + c2[0] + c3[0] + c4[0]) / 4;
+          const bgG = (c1[1] + c2[1] + c3[1] + c4[1]) / 4;
+          const bgB = (c1[2] + c2[2] + c3[2] + c4[2]) / 4;
+          const tol = 40;
+          for (let i = 0; i < work.length; i += 4) {
+            if (
+              Math.abs(work[i] - bgR) < tol &&
+              Math.abs(work[i + 1] - bgG) < tol &&
+              Math.abs(work[i + 2] - bgB) < tol
+            ) {
+              work[i + 3] = 0;
+            }
+          }
+        }
+
+        if ((settings?.colorMode || 'bw') === 'bw') {
+          const thresh = settings?.threshold || 128;
+          for (let i = 0; i < work.length; i += 4) {
+            if (work[i + 3] < 10 && settings?.transparentBg) {
+              work[i] = 255;
+              work[i + 1] = 255;
+              work[i + 2] = 255;
+              continue;
+            }
+            const gray = 0.299 * work[i] + 0.587 * work[i + 1] + 0.114 * work[i + 2];
+            const bw = gray < thresh ? 0 : 255;
+            work[i] = bw;
+            work[i + 1] = bw;
+            work[i + 2] = bw;
+          }
+        } else {
+          const levels = Math.max(2, Math.min(16, settings?.posterizeColors || 4));
+          const step = 255 / (levels - 1);
+          for (let i = 0; i < work.length; i += 4) {
+            work[i] = Math.round(work[i] / step) * step;
+            work[i + 1] = Math.round(work[i + 1] / step) * step;
+            work[i + 2] = Math.round(work[i + 2] / step) * step;
+          }
+        }
+
         // Feed potrace's tracing engine directly (bypasses its broken async Jimp loader)
         const fakeImage = {
-          bitmap: { width, height, data: pixels },
+          bitmap: { width, height, data: work },
           scan: (x0: number, y0: number, scanW: number, scanH: number, cb: (x: number, y: number, idx: number) => void) => {
             for (let y = y0; y < y0 + scanH; y++) {
               for (let x = x0; x < x0 + scanW; x++) {
@@ -269,9 +390,30 @@ app.post('/api/vectorize', (req, res) => {
           },
         };
 
-        const tracer = new potrace.Potrace(traceOptions);
-        (tracer as any)._processLoadedImage(fakeImage);
-        const svg = tracer.getSVG();
+        let svg: string;
+        if ((settings?.colorMode || 'bw') === 'color') {
+          // Real multi-color vectorization: one traced layer per luma band,
+          // each filled with the band's true dominant color. (potrace's own
+          // Posterizer only layers black+opacity and its auto-range Otsu
+          // search hangs exponentially, so we trace the bands ourselves.)
+          svg = buildColorVectorSvg(
+            work,
+            width,
+            height,
+            settings?.posterizeColors || 4,
+            settings?.transparentBg ? 'transparent' : '#FFFFFF',
+            {
+              turdSize: settings?.turdSize || 4,
+              turnPolicy: settings?.turnPolicy || 'minority',
+              optCurve: true,
+              optTolerance: 0.4,
+            }
+          );
+        } else {
+          const tracer = new potrace.Potrace(traceOptions);
+          (tracer as any)._processLoadedImage(fakeImage);
+          svg = tracer.getSVG();
+        }
         res.json({ success: true, svg });
       })
       .catch((err: any) => {

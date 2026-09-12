@@ -246,6 +246,10 @@ export const ScriptStudio: React.FC = () => {
     window.speechSynthesis.speak(utterance);
   };
 
+  // Escape user text for safe embedding in SVG / HTML exports
+  const escapeXml = (s: string): string =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   // Downloads
   const handleDownloadFile = (type: 'txt' | 'docx' | 'pdf' | 'svg') => {
     if (!activeOutput) return;
@@ -285,7 +289,15 @@ export const ScriptStudio: React.FC = () => {
     </style>
   </defs>
   <rect width="100%" height="100%" fill="${previewBgColor}" rx="24"/>
-  <text x="500" y="200" class="script-text">${activeOutput}</text>
+  <text x="500" y="200" class="script-text">${
+    escapeXml(activeOutput)
+      .split('\n')
+      .map(
+        (line, i) =>
+          `<tspan x="500"${i > 0 ? ` dy="${1.15 * fontSize}px"` : ''}>${line || ' '}</tspan>`
+      )
+      .join('')
+  }</text>
   <text x="960" y="380" text-anchor="end" class="watermark">Created with Panther Studio AI Script Converter</text>
 </svg>`;
 
@@ -304,7 +316,7 @@ export const ScriptStudio: React.FC = () => {
       </head>
       <body>
         <div class="meta">Panther Studio AI Script Converter Export | Language: ${currentTargetLangObj.name} | Mode: ${mode}</div>
-        <div>${activeOutput}</div>
+        <div>${escapeXml(activeOutput).split('\n').join('<br/>')}</div>
       </body>
       </html>`;
 
@@ -328,7 +340,7 @@ export const ScriptStudio: React.FC = () => {
               </style>
             </head>
             <body>
-              <h1>${activeOutput}</h1>
+              <h1>${escapeXml(activeOutput).split('\n').join('<br/>')}</h1>
               <p>Exported via Panther Studio AI Script Converter (${currentTargetLangObj.name})</p>
               <script>window.onload = function() { window.print(); window.close(); }</script>
             </body>

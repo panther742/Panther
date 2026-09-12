@@ -8,6 +8,7 @@ import {
   generateSvgPalette,
   downloadFile,
 } from '../../utils/colorUtils';
+import { buildPdfWithPng } from '../../utils/exportFormats';
 import { X, Download, FileCode, FileText, Image, Check } from 'lucide-react';
 
 interface ExportPaletteModalProps {
@@ -82,9 +83,10 @@ export const ExportPaletteModal: React.FC<ExportPaletteModalProps> = ({
             }
           });
         } else {
-          // Printable PDF format trigger
-          const svg = generateSvgPalette(colors);
-          downloadFile(svg, `${filename}.pdf`, 'application/pdf');
+          // Real printable PDF 1.4 with the rendered swatch sheet embedded
+          const pngDataUrl = canvas.toDataURL('image/png');
+          const pdf = buildPdfWithPng(pngDataUrl, 1200, 400);
+          downloadFile(pdf, `${filename}.pdf`, 'application/pdf');
         }
       }
     }

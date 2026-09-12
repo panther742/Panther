@@ -57,6 +57,7 @@ import {
   normalizeBBox,
 } from '../../lib/psdShared';
 import { generatePhotoshopPSD, GeneratedPSDResult, ExtractedAsset } from '../../lib/psdBuilder';
+import { runLocalPSDReconstruction } from '../../lib/localPsdClient';
 
 // Popular Google Fonts list for dropdown selection
 const GOOGLE_FONT_OPTIONS = [
@@ -424,30 +425,56 @@ export const PSDStudio: React.FC = () => {
       setProgressPercent(28);
       setProgressStage('Pass 2/12: Complete Object Segmentation & Cutout Isolation...');
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s vision engine timeout
+      // Obtain the magic-layer blueprint. Prefer the server engine; when the
+      // backend is unreachable (standalone HTML / offline double-click mode)
+      // run the SAME segmentation pipeline locally in the browser.
+      const bp = await (async (): Promise<PSDReconstructionBlueprint | null> => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s vision engine timeout
 
-      const resp = await fetch('/api/psd/reconstruct', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageDataUrl: selectedImage,
-          sessionId,
-          options,
-          imageWidth: imageDimensions.width,
-          imageHeight: imageDimensions.height,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+          const resp = await fetch('/api/psd/reconstruct', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageDataUrl: selectedImage,
+              sessionId,
+              options,
+              imageWidth: imageDimensions.width,
+              imageHeight: imageDimensions.height,
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
 
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData?.error || errData?.details || `Server error (HTTP ${resp.status})`);
-      }
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData?.error || errData?.details || `Server error (HTTP ${resp.status})`);
+          }
 
-      const data = await resp.json();
-      const bp: PSDReconstructionBlueprint = data?.blueprint || null;
+          const data = await resp.json();
+          return data?.blueprint || null;
+        } catch (serverErr: any) {
+          console.warn(
+            '[PSDStudio] Server reconstruction unavailable — switching to built-in local magic-layer engine:',
+            serverErr?.message || serverErr
+          );
+          try {
+            return await runLocalPSDReconstruction(
+              selectedImage,
+              options,
+              imageDimensions.width,
+              imageDimensions.height
+            );
+          } catch (localErr: any) {
+            console.error('Local PSD reconstruction failed:', localErr);
+            throw new Error(
+              `Reconstruction failed on both engines: ${localErr?.message || serverErr?.message || 'unknown error'}`
+            );
+          }
+        }
+      })();
+
       if (!bp) {
         throw new Error('The reconstruction engine returned an empty blueprint. Please try again.');
       }

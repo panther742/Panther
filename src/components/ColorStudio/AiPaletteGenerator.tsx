@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ColorItem } from '../../types';
 import { hexToColorItem } from '../../utils/colorUtils';
+import { synthesizeLocalPalette } from '../../utils/localPaletteGenerator';
 import { apiClient } from '../../lib/apiClient';
 import { Sparkles, Wand2, Loader2, ArrowRight } from 'lucide-react';
 
@@ -51,8 +52,16 @@ export const AiPaletteGenerator: React.FC<AiPaletteGeneratorProps> = ({
         onApplyGeneratedColors(colorItems);
       }
     } catch (err: any) {
-      console.error('AI Palette error:', err);
-      setErrorMessage(err.message || 'Could not connect to AI palette generator');
+      console.warn('AI Palette request failed — using built-in local synthesizer:', err?.message || err);
+      // Standalone / offline mode: synthesize a professional palette locally
+      // instead of showing a dead-end error.
+      try {
+        const local = synthesizeLocalPalette(textToUse, 'balanced');
+        onApplyGeneratedColors(local.colors.map((hex: string) => hexToColorItem(hex)));
+        setErrorMessage(null);
+      } catch {
+        setErrorMessage(err.message || 'Could not connect to AI palette generator');
+      }
     } finally {
       setIsLoading(false);
     }

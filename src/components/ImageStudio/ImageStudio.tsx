@@ -20,6 +20,7 @@ import { ImageEditorModal } from './ImageEditorModal';
 import { HistoryDrawer } from './HistoryDrawer';
 import { ProviderSetupModal } from './ProviderSetupModal';
 import { apiClient } from '../../lib/apiClient';
+import { generatePollinationsImage } from '../../utils/directImageGen';
 import {
   Sparkles,
   Wand2,
@@ -313,6 +314,95 @@ export const ImageStudio: React.FC = () => {
     setUploadedFileName(null);
   };
 
+  // Commits a freshly generated media result into state + history.
+  // Shared by the server engine path and the direct (standalone) path.
+  const commitGeneratedMedia = (
+    data: { originalPrompt?: string; optimizedPrompt?: string; providerUsed?: string; generationTimeMs?: number },
+    finalMediaUrl: string,
+    promptToUse: string,
+    isVideo: boolean,
+    isGif: boolean,
+    isImageToVideo: boolean,
+    activeDuration: string | undefined,
+    width: number,
+    height: number,
+    providerLabel?: string
+  ) => {
+    const generatedList: GeneratedMediaItem[] = [
+      {
+        id: `media-${Date.now()}`,
+        url: finalMediaUrl,
+        mediaType: generationTab,
+        originalPrompt: data.originalPrompt || promptToUse,
+        optimizedPrompt: data.optimizedPrompt || promptToUse,
+        stylePreset: selectedStyle,
+        aspectRatio,
+        createdAt: Date.now(),
+        provider: providerLabel
+          ? providerLabel
+          : isVideo
+          ? isImageToVideo
+            ? 'Panther AI (Image → Video)'
+            : 'Panther AI (Text → Video)'
+          : isGif
+          ? 'Panther AI (Image → GIF)'
+          : data.providerUsed || 'Panther AI',
+        width: width || 1024,
+        height: height || 1024,
+        resolution: videoQuality,
+        generationTimeMs: data.generationTimeMs || 2500,
+        seed: Math.floor(Math.random() * 899999) + 100000,
+        duration: activeDuration,
+        fps: videoFps,
+        cameraMovement,
+        particleEffect,
+        loopAnimation,
+        sourceImageUrl: sourceImageUrl || undefined,
+      },
+    ];
+
+    setCurrentImages(generatedList);
+    setOriginalPrompt(data.originalPrompt || promptToUse);
+    setOptimizedPrompt(data.optimizedPrompt || promptToUse);
+    setShowPromptOptimization(true);
+
+    // Save to History
+    const newHistoryItem: ImagePromptHistory = {
+      id: `hist-${Date.now()}`,
+      mediaType: generationTab,
+      originalPrompt: data.originalPrompt || promptToUse,
+      optimizedPrompt: data.optimizedPrompt || promptToUse,
+      stylePreset: selectedStyle,
+      imageCount: 1,
+      aspectRatio,
+      timestamp: Date.now(),
+      createdAt: Date.now(),
+      items: generatedList,
+      images: generatedList,
+    };
+    setHistory((prev) => [newHistoryItem, ...prev]);
+
+    if (chatTurns.length === 0) {
+      setChatTurns([
+        {
+          id: `turn-init-${Date.now()}`,
+          sender: 'user',
+          message: promptToUse,
+          timestamp: Date.now(),
+        },
+        {
+          id: `turn-res-${Date.now()}`,
+          sender: 'assistant',
+          message: `Generated ${(generationTab || 'image').toUpperCase()} asset.`,
+          imageUrl: finalMediaUrl,
+          originalPrompt: data.originalPrompt || promptToUse,
+          optimizedPrompt: data.optimizedPrompt || promptToUse,
+          timestamp: Date.now() + 1,
+        },
+      ]);
+    }
+  };
+
   // Main Generation Action
   const handleGenerateMedia = async (overridePrompt?: string) => {
     const promptToUse = overridePrompt || optimizedPrompt || prompt;
@@ -410,82 +500,49 @@ export const ImageStudio: React.FC = () => {
       setLoadingStepText(steps[4]);
 
       if (finalMediaUrl) {
-        const generatedList: GeneratedMediaItem[] = [
-          {
-            id: `media-${Date.now()}`,
-            url: finalMediaUrl,
-            mediaType: generationTab,
-            originalPrompt: data.originalPrompt || promptToUse,
-            optimizedPrompt: data.optimizedPrompt || promptToUse,
-            stylePreset: selectedStyle,
-            aspectRatio,
-            createdAt: Date.now(),
-            provider: isVideo
-              ? isImageToVideo
-                ? 'Panther AI (Image → Video)'
-                : 'Panther AI (Text → Video)'
-              : isGif
-              ? 'Panther AI (Image → GIF)'
-              : data.providerUsed || 'Panther AI',
-            width: data.images?.[0]?.width || 1024,
-            height: data.images?.[0]?.height || 1024,
-            resolution: videoQuality,
-            generationTimeMs: data.generationTimeMs || 2500,
-            seed: data.images?.[0]?.seed || Math.floor(Math.random() * 899999) + 100000,
-            duration: activeDuration,
-            fps: videoFps,
-            cameraMovement,
-            particleEffect,
-            loopAnimation,
-            sourceImageUrl: sourceImageUrl || undefined,
-          },
-        ];
-
-        setCurrentImages(generatedList);
-        setOriginalPrompt(data.originalPrompt || promptToUse);
-        setOptimizedPrompt(data.optimizedPrompt || promptToUse);
-        setShowPromptOptimization(true);
-
-        // Save to History
-        const newHistoryItem: ImagePromptHistory = {
-          id: `hist-${Date.now()}`,
-          mediaType: generationTab,
-          originalPrompt: data.originalPrompt || promptToUse,
-          optimizedPrompt: data.optimizedPrompt || promptToUse,
-          stylePreset: selectedStyle,
-          imageCount: 1,
-          aspectRatio,
-          timestamp: Date.now(),
-          createdAt: Date.now(),
-          items: generatedList,
-          images: generatedList,
-        };
-        setHistory((prev) => [newHistoryItem, ...prev]);
-
-        if (chatTurns.length === 0) {
-          setChatTurns([
-            {
-              id: `turn-init-${Date.now()}`,
-              sender: 'user',
-              message: promptToUse,
-              timestamp: Date.now(),
-            },
-            {
-              id: `turn-res-${Date.now()}`,
-              sender: 'assistant',
-              message: `Generated ${(generationTab || 'image').toUpperCase()} asset.`,
-              imageUrl: finalMediaUrl,
-              originalPrompt: data.originalPrompt || promptToUse,
-              optimizedPrompt: data.optimizedPrompt || promptToUse,
-              timestamp: Date.now() + 1,
-            },
-          ]);
-        }
+        commitGeneratedMedia(
+          data,
+          finalMediaUrl,
+          promptToUse,
+          isVideo,
+          isGif,
+          isImageToVideo,
+          activeDuration,
+          data.images?.[0]?.width || 1024,
+          data.images?.[0]?.height || 1024
+        );
       } else {
         throw new Error('Failed to generate media output.');
       }
     } catch (err: any) {
       console.error('[AI Media Generator Error]:', err?.message || err);
+      // Standalone / offline mode: no backend available. For images, try the
+      // free keyless Pollinations FLUX engine straight from the browser.
+      if (generationTab === 'image') {
+        try {
+          const direct = await generatePollinationsImage(promptToUse, aspectRatio, selectedStyle);
+          commitGeneratedMedia(
+            { originalPrompt: promptToUse, optimizedPrompt: promptToUse, generationTimeMs: 0 },
+            direct.url,
+            promptToUse,
+            isVideo,
+            isGif,
+            isImageToVideo,
+            undefined,
+            direct.width,
+            direct.height,
+            direct.providerUsed
+          );
+          setGenerationError(null);
+          return;
+        } catch (directErr: any) {
+          console.error('[Direct Pollinations Error]:', directErr?.message || directErr);
+          setGenerationError(
+            `Image generation needs internet. ${directErr?.message || err?.message || 'No engine available.'}`
+          );
+          return;
+        }
+      }
       setGenerationError(err?.message || 'Failed to generate media asset.');
     } finally {
       setIsGenerating(false);

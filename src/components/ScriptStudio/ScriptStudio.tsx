@@ -36,6 +36,7 @@ import {
   ScriptLanguageOption,
 } from '../../types';
 import { SUPPORTED_LANGUAGES, FEATURED_LANGUAGES, loadGoogleFontForScript } from './languagesData';
+import { localScriptConvert } from '../../utils/localScriptConverter';
 
 const VARIATION_LABELS: Record<DesignerVariationStyle, { label: string; icon: string; desc: string }> = {
   short: { label: 'Short Version', icon: '⚡', desc: 'Punchy & compact for app icons or badges' },
@@ -201,10 +202,40 @@ export const ScriptStudio: React.FC = () => {
         setConversionError('Conversion returned no result. Please try again.');
       }
     } catch (err: any) {
-      console.error('Script conversion request error:', err);
-      setConversionError(
-        err?.message || 'AI script conversion failed. Please check your network connection and try again.'
-      );
+      console.warn('Script conversion request failed — using built-in offline converter:', err?.message || err);
+      // Standalone / offline mode: produce a real dictionary-based script
+      // conversion locally instead of showing a dead-end error.
+      try {
+        const local = localScriptConvert({
+          sourceText,
+          sourceLang,
+          targetLang,
+          mode,
+          designerMode,
+          quickFixAction: overrideQuickFix,
+        });
+        const res: ScriptConversionResult = {
+          id: `conv-${Date.now()}`,
+          sourceText,
+          sourceLang,
+          targetLang,
+          mode,
+          primaryOutput: local.primaryOutput || sourceText,
+          pronunciationGuide: local.pronunciationGuide,
+          explanation: local.explanation,
+          designerVariations: local.designerVariations,
+          timestamp: Date.now(),
+          isFavorite: false,
+        };
+        setCurrentResult(res);
+        setActiveOutput(res.primaryOutput);
+        saveHistoryItem(res);
+        setConversionError(null);
+      } catch (localErr: any) {
+        setConversionError(
+          err?.message || 'AI script conversion failed. Please check your network connection and try again.'
+        );
+      }
     } finally {
       setIsConverting(false);
     }

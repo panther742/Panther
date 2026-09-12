@@ -384,5 +384,21 @@ export interface TypographyDesign {
 
 export type TypographyExportFormat = 'png' | 'svg' | 'pdf' | 'psd' | 'ai' | 'eps' | 'dxf' | 'cdr';
 
+/* SCRIPT CONVERTER TYPES (shared server + standalone client) */
+export interface ScriptConverterRequest {
+  sourceText: string;
+  sourceLang?: string;
+  targetLang: string;
+  mode: ScriptConversionMode;
+  designerMode?: boolean;
+  quickFixAction?: string;
+}
 
+export interface ScriptConverterResponse {
+  primaryOutput: string;
+  pronunciationGuide?: string;
+  explanation?: string;
+  detectedSourceLang?: string;
+  designerVariations?: Record<DesignerVariationStyle, string>;
+}
 

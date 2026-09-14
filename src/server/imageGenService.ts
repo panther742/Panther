@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { stylePhrase } from '../utils/imageStylePhrases';
 
 export interface ImageGenParams {
   mediaType?: 'image' | 'gif' | 'video';
@@ -111,7 +112,7 @@ async function generatePollinationsImages(
 ): Promise<ImageGenResult> {
   const dimensions = getDimensionsFromRatio(aspectRatio);
   const images: any[] = [];
-  const fullPrompt = `${optimizedPrompt}, ${stylePreset} style artwork`;
+  const fullPrompt = `${optimizedPrompt}, ${stylePhrase(stylePreset)} artwork`;
 
   console.log(`[AI Image Generator Log] Generating ${count} image(s) using Pollinations AI (FLUX.1)...`);
 
@@ -391,7 +392,10 @@ export function analyzeAndExpandPromptLocallyV2(rawPrompt: string, stylePreset?:
   if (environmentPhrase && !hasEnvKeyword) expandedParts.push(environmentPhrase);
   else if (!environmentPhrase && !hasEnvKeyword) expandedParts.push('in a cinematic atmospheric setting');
 
-  const styleModifier = stylePreset && stylePreset !== 'realistic' ? `, ${stylePreset} style` : '';
+  const styleModifier =
+    stylePreset && stylePreset !== 'realistic' && stylePreset !== 'photorealistic'
+      ? `, ${stylePhrase(stylePreset)}`
+      : '';
   const expandedPrompt = `Ultra realistic ${expandedParts.join(' ')}${styleModifier}, aggressive cinematic camera angle, professional volumetric lighting, natural colors, highly detailed material textures, accurate object anatomy, 8k resolution, photorealistic masterpiece rendering. ${STANDARD_NEGATIVE_PROMPT}`;
 
   return {
@@ -1020,7 +1024,7 @@ export async function generateImagesWithAdapter(params: ImageGenParams): Promise
         apiKey: key,
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
       });
-      const fullPrompt = `High quality artwork: ${optimizedPrompt}. Style: ${stylePreset}.`;
+      const fullPrompt = `High quality artwork: ${optimizedPrompt}. Style: ${stylePhrase(stylePreset)}.`;
 
       const modelsToTry = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation'];
       let imageBase64List: string[] = [];

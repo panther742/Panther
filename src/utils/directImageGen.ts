@@ -5,6 +5,7 @@
  * Image Studio still tries the free keyless Pollinations FLUX engine straight
  * from the browser. Needs internet, but no server and no API key.
  */
+import { stylePhrase } from './imageStylePhrases';
 
 const ASPECT_SIZES: Record<string, { width: number; height: number }> = {
   '1:1': { width: 1024, height: 1024 },
@@ -29,7 +30,7 @@ export async function generatePollinationsImage(
   stylePreset?: string
 ): Promise<DirectGeneratedImage> {
   const size = ASPECT_SIZES[aspectRatio] || ASPECT_SIZES['1:1'];
-  const styleSuffix = stylePreset && stylePreset !== 'none' ? `, ${stylePreset}` : '';
+  const styleSuffix = stylePreset && stylePreset !== 'none' ? `, ${stylePhrase(stylePreset)}` : '';
   const fullPrompt = `${prompt}${styleSuffix}`.trim();
 
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(

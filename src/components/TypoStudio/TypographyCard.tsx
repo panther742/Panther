@@ -64,8 +64,10 @@ export const TypographyCard: React.FC<TypographyCardProps> = ({
                 style={{
                   fontFamily: `"${part.fontFamily}", sans-serif`,
                   fontWeight: part.fontWeight,
+                  fontStyle: part.italic ? 'italic' : undefined,
                   fontSize: `${Math.min(34, Math.max(9, part.fontSize * scale))}px`,
                   letterSpacing: `${part.letterSpacing * scale}px`,
+                  lineHeight: part.lineHeight || 1.2,
                   textTransform: part.textTransform,
                   color: part.colorHex,
                   textAlign: align,

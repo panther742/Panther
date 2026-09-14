@@ -236,7 +236,8 @@ export const TypographyGenerator: React.FC = () => {
               <p className="text-xs text-[#C9D4E5]/75 mt-0.5 font-medium">
                 Type your text → we auto-pair a <strong className="text-[#FDE68A]">stylish hero font</strong> + a{' '}
                 <strong className="text-[#FDE68A]">unique accent font</strong> + a{' '}
-                <strong className="text-[#FDE68A]">simple clean font</strong> into finished compositions.
+                <strong className="text-[#FDE68A]">simple clean font</strong> — poster mixes &amp; blog
+                editorial layouts (headline + deck + body).
               </p>
             </div>
           </div>

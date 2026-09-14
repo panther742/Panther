@@ -1091,6 +1091,19 @@ interface AutoMixPreset {
   heroSpacing: number;
   accentTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   accentSpacing: number;
+  /**
+   * 'blog' presets render a full article layout — category label, big serif
+   * headline, italic deck, divider, body excerpt & author meta — exactly
+   * like typography on a blog post page.
+   */
+  layoutKind?: 'poster' | 'blog';
+  blog?: {
+    label: string;
+    deckFallback: string;
+    body: string;
+    meta: string;
+    deckItalic: boolean;
+  };
 }
 
 const AUTO_MIX_PRESETS: AutoMixPreset[] = [
@@ -1206,6 +1219,72 @@ const AUTO_MIX_PRESETS: AutoMixPreset[] = [
     accentTransform: 'uppercase',
     accentSpacing: 3,
   },
+  {
+    vibe: 'Editorial Blog',
+    category: 'Blog',
+    layoutKind: 'blog',
+    hero: { family: 'Playfair Display', weights: [700] },
+    accent: { family: 'Lora', weights: [400] },
+    simple: { family: 'Montserrat', weights: [400, 700] },
+    tagline: 'PANTHER JOURNAL • DESIGN STORIES',
+    palette: { primaryColor: '#1A1A1A', secondaryColor: '#5A5A5A', accentColor: '#C0652A', backgroundColor: '#FAF7F2', textColor: '#333333' },
+    bgRecommendation: 'Paper',
+    heroTransform: 'none',
+    heroSpacing: 0,
+    accentTransform: 'none',
+    accentSpacing: 0,
+    blog: {
+      label: 'DESIGN • EDITORIAL',
+      deckFallback: 'On craft, creativity and the quiet power of good typography.',
+      body: 'Great blogs are built on hierarchy: a confident serif headline, an italic deck that invites you in, and body text that stays out of the way.',
+      meta: 'BY PANTHER STUDIO — 5 MIN READ',
+      deckItalic: true,
+    },
+  },
+  {
+    vibe: 'Tech Blog',
+    category: 'Editorial',
+    layoutKind: 'blog',
+    hero: { family: 'Space Grotesk', weights: [700] },
+    accent: { family: 'JetBrains Mono', weights: [400] },
+    simple: { family: 'Inter', weights: [400, 600] },
+    tagline: 'SIGNALS FROM THE FUTURE',
+    palette: { primaryColor: '#0B1220', secondaryColor: '#4B5A70', accentColor: '#007BFF', backgroundColor: '#F2F6FA', textColor: '#1E293B' },
+    bgRecommendation: 'Paper',
+    heroTransform: 'none',
+    heroSpacing: -0.5,
+    accentTransform: 'none',
+    accentSpacing: 0,
+    blog: {
+      label: 'TECH • INSIGHTS',
+      deckFallback: 'Notes on interfaces, systems and the tools we build for designers.',
+      body: 'From vector pipelines to generative type engines — a field journal of the tools shaping modern creative work.',
+      meta: 'PANTHER LABS — UPDATED WEEKLY',
+      deckItalic: false,
+    },
+  },
+  {
+    vibe: 'Lifestyle Blog',
+    category: 'Blog',
+    layoutKind: 'blog',
+    hero: { family: 'Abril Fatface', weights: [400] },
+    accent: { family: 'Dancing Script', weights: [400] },
+    simple: { family: 'Lora', weights: [400, 700] },
+    tagline: 'THE SLOW LIVING JOURNAL',
+    palette: { primaryColor: '#2B2B2B', secondaryColor: '#6E6E6E', accentColor: '#B76E79', backgroundColor: '#FBF6EE', textColor: '#3A3A3A' },
+    bgRecommendation: 'Paper',
+    heroTransform: 'none',
+    heroSpacing: 0.5,
+    accentTransform: 'none',
+    accentSpacing: 0,
+    blog: {
+      label: 'LIFESTYLE • STORIES',
+      deckFallback: 'Simple rituals, beautiful spaces and mindful everyday design.',
+      body: 'A warm editorial read about living intentionally — with typography that feels as calm as the story it tells.',
+      meta: 'WRITTEN BY THE PANTHER TEAM',
+      deckItalic: false,
+    },
+  },
 ];
 
 const MIX_DIVIDERS = ['✦ ✦ ✦', '— — —', '• • •', '◆ ◆ ◆'];
@@ -1244,6 +1323,139 @@ export function generateAutoMixedTypographyDesigns(
     const accentText = restWords
       ? applyTransform(restWords, p.accentTransform)
       : MIX_DIVIDERS[offset % MIX_DIVIDERS.length];
+
+    // ------------------------------------------------------------------
+    // BLOG / EDITORIAL LAYOUT — category label, serif headline, italic
+    // deck, divider, body excerpt & author meta (article-page typography)
+    // ------------------------------------------------------------------
+    if (p.layoutKind === 'blog' && p.blog) {
+      const b = p.blog;
+      // Headline: first 2-3 words; the remaining words become the deck
+      const headlineWords = words.length > 3 ? words.slice(0, 2) : words;
+      const deckWords = words.length > 3 ? words.slice(2) : [];
+      const headline = applyTransform(headlineWords.join(' '), p.heroTransform);
+      const deck = deckWords.length ? deckWords.join(' ') : b.deckFallback;
+      // Shrink the headline as the text grows so it always fits the canvas
+      const headlineSize =
+        headline.length > 26 ? 44 : headline.length > 18 ? 52 : headline.length > 10 ? 60 : 68;
+
+      const parts: TypographyMixedFontPart[] = [
+        {
+          text: b.label,
+          fontName: p.simple.family,
+          fontFamily: p.simple.family,
+          fontWeight: 700,
+          fontSize: 13,
+          textTransform: 'uppercase',
+          letterSpacing: 6,
+          colorHex: p.palette.accentColor,
+          x: 400,
+          y: 46,
+          align: 'center',
+        },
+        {
+          text: headline,
+          fontName: p.hero.family,
+          fontFamily: p.hero.family,
+          fontWeight: heroWeight,
+          fontSize: headlineSize,
+          textTransform: p.heroTransform,
+          letterSpacing: p.heroSpacing,
+          colorHex: p.palette.primaryColor,
+          x: 400,
+          y: 112,
+          align: 'center',
+        },
+        {
+          text: deck,
+          fontName: p.accent.family,
+          fontFamily: p.accent.family,
+          fontWeight: accentWeight,
+          fontSize: 19,
+          textTransform: p.accentTransform,
+          letterSpacing: p.accentSpacing,
+          colorHex: p.palette.secondaryColor,
+          x: 400,
+          y: 188,
+          align: 'center',
+          italic: b.deckItalic,
+        },
+        {
+          text: '— — —',
+          fontName: p.accent.family,
+          fontFamily: p.accent.family,
+          fontWeight: 400,
+          fontSize: 11,
+          textTransform: 'none',
+          letterSpacing: 2,
+          colorHex: p.palette.accentColor,
+          x: 400,
+          y: 230,
+          align: 'center',
+        },
+        {
+          text: b.body,
+          fontName: p.simple.family,
+          fontFamily: p.simple.family,
+          fontWeight: 400,
+          fontSize: 12.5,
+          textTransform: 'none',
+          letterSpacing: 0.2,
+          colorHex: p.palette.textColor,
+          x: 400,
+          y: 288,
+          align: 'center',
+          lineHeight: 1.55,
+        },
+        {
+          text: b.meta,
+          fontName: p.simple.family,
+          fontFamily: p.simple.family,
+          fontWeight: 700,
+          fontSize: 10,
+          textTransform: 'uppercase',
+          letterSpacing: 3.5,
+          colorHex: p.palette.secondaryColor,
+          x: 400,
+          y: 356,
+          align: 'center',
+        },
+      ];
+
+      designs.push({
+        id: `typo-mix-${offset}-${seed}`,
+        styleName: `Auto Mix ${offset + 1}: ${p.hero.family} × ${p.accent.family}`,
+        category: p.category,
+        fontName: p.hero.family,
+        fontFamily: p.hero.family,
+        fontWeight: heroWeight,
+        layout: 'mixed',
+        fontSize: Math.round(headlineSize),
+        textTransform: p.heroTransform,
+        letterSpacing: p.heroSpacing,
+        wordSpacing: 0,
+        curveAngle: 0,
+        strokeWidth: 0,
+        strokeColor: p.palette.primaryColor,
+        shadowColor: 'rgba(0, 0, 0, 0.12)',
+        shadowBlur: 6,
+        shadowOffsetX: 0,
+        shadowOffsetY: 2,
+        glowColor: 'transparent',
+        glowRadius: 0,
+        gradientFill: undefined,
+        opacity: 1,
+        rotation: 0,
+        alignment: 'center',
+        palette: p.palette,
+        bgRecommendation: p.bgRecommendation,
+        badgeFrame: 'none',
+        tagline: b.label,
+        customText: normalizedText,
+        mixedFonts: parts,
+      });
+      continue;
+    }
 
     // Layout pattern varies per preset: centered stack / offset accent / split hero
     const parts: TypographyMixedFontPart[] = [];

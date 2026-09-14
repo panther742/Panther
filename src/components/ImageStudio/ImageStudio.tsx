@@ -72,6 +72,9 @@ const STYLE_PRESETS: { id: ImageStylePreset; label: string; desc: string }[] = [
   { id: '3d', label: '3D Render', desc: 'Octane render isometric style' },
   { id: 'anime', label: 'Anime Style', desc: 'Vibrant Japanese animation art' },
   { id: 'gaming', label: 'Game Asset', desc: 'Fantasy UI & character icons' },
+  { id: 'blog-editorial', label: 'Blog Editorial', desc: 'Serif headline + italic deck + clean body type' },
+  { id: 'magazine-cover', label: 'Magazine Cover', desc: 'Big masthead typography & editorial layout' },
+  { id: 'typography-poster', label: 'Typography Poster', desc: 'Mixed-font bold poster composition' },
 ];
 
 const PROVIDER_OPTIONS = [

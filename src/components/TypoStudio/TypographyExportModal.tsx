@@ -50,14 +50,17 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
 
     // ---- AUTO FONT MIX: render each part with its OWN font family ----
     if (design.mixedFonts && design.mixedFonts.length > 0) {
+      // Word-wrap long parts (blog body excerpts) to the canvas width
+      const maxLineWidth = width * 0.84;
       for (const part of design.mixedFonts) {
         const text = applyTransform(part.text, part.textTransform);
         const fontSizePx = Math.max(8, part.fontSize * scale);
+        const lineHeight = (part.lineHeight || 1.2) * fontSizePx;
         ctx.save();
         ctx.textAlign = part.align || 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = part.colorHex;
-        ctx.font = `${part.fontWeight} ${fontSizePx}px "${part.fontFamily}", sans-serif`;
+        ctx.font = `${part.italic ? 'italic ' : ''}${part.fontWeight} ${fontSizePx}px "${part.fontFamily}", sans-serif`;
         ctx.letterSpacing = `${part.letterSpacing * scale}px` as any;
         if (design.shadowBlur > 0) {
           ctx.shadowColor = design.shadowColor;
@@ -65,7 +68,27 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
           ctx.shadowOffsetX = design.shadowOffsetX * scale;
           ctx.shadowOffsetY = design.shadowOffsetY * scale;
         }
-        ctx.fillText(text, part.x * scale, part.y * scale);
+
+        // Split into wrapped lines
+        const words = text.split(/\s+/).filter(Boolean);
+        const lines: string[] = [];
+        let current = '';
+        for (const w of words) {
+          const candidate = current ? `${current} ${w}` : w;
+          if (ctx.measureText(candidate).width <= maxLineWidth || !current) {
+            current = candidate;
+          } else {
+            lines.push(current);
+            current = w;
+          }
+        }
+        if (current) lines.push(current);
+        if (lines.length === 0) lines.push(text);
+
+        const startY = part.y * scale - ((lines.length - 1) * lineHeight) / 2;
+        lines.forEach((line, li) => {
+          ctx.fillText(line, part.x * scale, startY + li * lineHeight);
+        });
         ctx.restore();
       }
       return canvas;
@@ -169,10 +192,40 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
                 `@import url('https://fonts.googleapis.com/css2?family=${part.fontFamily.replace(/\s+/g, '+')}:wght@${part.fontWeight}&amp;display=swap');`
             )
             .join('\n    ');
+          // Word-wrap long parts (blog body) into per-line tspans
+          const wrapText = (text: string, maxChars: number): string[] => {
+            const words = text.split(/\s+/).filter(Boolean);
+            const lines: string[] = [];
+            let current = '';
+            for (const w of words) {
+              const candidate = current ? `${current} ${w}` : w;
+              if (candidate.length <= maxChars || !current) current = candidate;
+              else {
+                lines.push(current);
+                current = w;
+              }
+            }
+            if (current) lines.push(current);
+            return lines.length ? lines : [text];
+          };
+
           const textNodes = design.mixedFonts
             .map((part) => {
               const anchor = part.align === 'left' ? 'start' : part.align === 'right' ? 'end' : 'middle';
-              return `  <text x="${part.x}" y="${part.y}" text-anchor="${anchor}" dominant-baseline="middle" font-family="'${part.fontFamily}', sans-serif" font-weight="${part.fontWeight}" font-size="${part.fontSize}" letter-spacing="${part.letterSpacing}" text-transform="${part.textTransform}" fill="${part.colorHex}">${applyTransform(part.text, part.textTransform)}</text>`;
+              const text = applyTransform(part.text, part.textTransform);
+              const lineHeight = (part.lineHeight || 1.2) * part.fontSize;
+              const maxChars = Math.max(28, Math.round(640 / Math.max(8, part.fontSize * 0.62)));
+              const lines = part.lineHeight && part.lineHeight > 1.2 ? wrapText(text, maxChars) : [text];
+              const italicAttr = part.italic ? ` font-style="italic"` : '';
+              const yStart = part.y - ((lines.length - 1) * lineHeight) / 2;
+              const tspans = lines
+                .map((line, li) =>
+                  li === 0
+                    ? `<tspan x="${part.x}" y="${yStart}">${line}</tspan>`
+                    : `<tspan x="${part.x}" dy="${lineHeight}">${line}</tspan>`
+                )
+                .join('');
+              return `  <text x="${part.x}" y="${yStart}" text-anchor="${anchor}" dominant-baseline="middle" font-family="'${part.fontFamily}', sans-serif" font-weight="${part.fontWeight}"${italicAttr} font-size="${part.fontSize}" letter-spacing="${part.letterSpacing}" text-transform="${part.textTransform}" fill="${part.colorHex}">${tspans}</text>`;
             })
             .join('\n');
           svgContent = `<?xml version="1.0" encoding="UTF-8"?>

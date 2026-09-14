@@ -177,7 +177,10 @@ export type ImageStylePreset =
   | 'neon'
   | 'fantasy'
   | 'vintage'
-  | 'photorealistic';
+  | 'photorealistic'
+  | 'blog-editorial'
+  | 'magazine-cover'
+  | 'typography-poster';
 
 export type MediaMode = 'image' | 'gif' | 'video';
 
@@ -309,7 +312,9 @@ export type TypographyCategory =
   | 'YouTube'
   | 'Logo Style'
   | 'Brand Style'
-  | 'Poster Style';
+  | 'Poster Style'
+  | 'Blog'
+  | 'Editorial';
 
 export type LayoutCompositionType =
   | 'standard'
@@ -366,6 +371,10 @@ export interface TypographyMixedFontPart {
   /** Vertical center in the 800x400 design space */
   y: number;
   align?: 'left' | 'center' | 'right';
+  /** Italic style (blog deck / editorial subtitle) */
+  italic?: boolean;
+  /** Reduce line-height spacing (for multi-line body paragraphs) */
+  lineHeight?: number;
 }
 
 export interface TypographyDesign {

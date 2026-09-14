@@ -14,11 +14,12 @@ import { ExportTypoModal } from './ExportTypoModal';
 import { FontDetailsModal } from './FontDetailsModal';
 import { AiTypographyAssistant } from './AiTypographyAssistant';
 import { BrandKitManager } from './BrandKitManager';
-import { Type, Download, RefreshCw, Sparkles, Layers } from 'lucide-react';
+import { FontjoyPairingStudio } from './FontjoyPairingStudio';
+import { Type, Download, RefreshCw, Sparkles, Layers, Wand2 } from 'lucide-react';
 
 export const TypoStudio: React.FC = () => {
   // Active Mode: 'generator' (Panther Typography Generator) vs 'pairing' (Font Pairing Workspace)
-  const [activeTab, setActiveTab] = useState<'generator' | 'pairing'>('generator');
+  const [activeTab, setActiveTab] = useState<'generator' | 'pairing' | 'fontjoy'>('generator');
 
   // Current active typography pairing state
   const [currentPairing, setCurrentPairing] = useState<TypographyPairing>(
@@ -167,6 +168,19 @@ export const TypoStudio: React.FC = () => {
             <Layers className="w-4 h-4" />
             <span>Font Pairing Workspace</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('fontjoy')}
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 transition-all ${
+              activeTab === 'fontjoy'
+                ? 'bg-gradient-to-r from-[#D4AF37] to-[#FDE68A] text-black shadow-lg shadow-[#D4AF37]/25'
+                : 'text-[#C9D4E5]/80 hover:text-white hover:bg-[#111C30]'
+            }`}
+            id="tab-ai-font-pairing"
+          >
+            <Wand2 className="w-4 h-4" />
+            <span>AI Font Pairing</span>
+          </button>
         </div>
 
         <span className="text-[10px] font-mono font-bold text-[#00D8FF] uppercase px-3 hidden md:inline">
@@ -175,7 +189,16 @@ export const TypoStudio: React.FC = () => {
       </div>
 
       {/* VIEW RENDER */}
-      {activeTab === 'generator' ? (
+      {activeTab === 'fontjoy' ? (
+        <div className="space-y-8">
+          <FontjoyPairingStudio
+            onApplyToWorkspace={(pairing) => {
+              setCurrentPairing(pairing);
+              setActiveTab('pairing');
+            }}
+          />
+        </div>
+      ) : activeTab === 'generator' ? (
         <TypographyGenerator />
       ) : (
         <div className="space-y-10">

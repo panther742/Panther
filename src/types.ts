@@ -327,7 +327,8 @@ export type LayoutCompositionType =
   | 'side-lines'
   | 'crest-emblem'
   | 'neon-box'
-  | 'stencil-cut';
+  | 'stencil-cut'
+  | 'mixed';
 
 export type BgRecommendation =
   | 'White'
@@ -347,6 +348,24 @@ export interface TypographyPalette {
   accentColor: string;
   backgroundColor: string;
   textColor: string;
+}
+
+export interface TypographyMixedFontPart {
+  /** Text for this part (a word/line of the user's input) */
+  text: string;
+  fontName: string;
+  fontFamily: string;
+  fontWeight: number;
+  /** Font size in px, in the 800x400 design space */
+  fontSize: number;
+  textTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  letterSpacing: number;
+  colorHex: string;
+  /** Horizontal anchor in the 800x400 design space (default 400) */
+  x: number;
+  /** Vertical center in the 800x400 design space */
+  y: number;
+  align?: 'left' | 'center' | 'right';
 }
 
 export interface TypographyDesign {
@@ -380,6 +399,12 @@ export interface TypographyDesign {
   tagline?: string;
   isFavorite?: boolean;
   customText?: string;
+  /**
+   * AUTO FONT MIX: when present, the design renders as 2-3 stacked text
+   * parts, each with its OWN font family / weight / size / color — a real
+   * multi-font typography composition (stylish + simple + unique fonts).
+   */
+  mixedFonts?: TypographyMixedFontPart[];
 }
 
 export type TypographyExportFormat = 'png' | 'svg' | 'pdf' | 'psd' | 'ai' | 'eps' | 'dxf' | 'cdr';

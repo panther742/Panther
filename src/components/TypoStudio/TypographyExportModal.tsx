@@ -23,6 +23,9 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
 
   const displayText = design.customText || userText || 'Panther Studio';
 
+  const applyTransform = (text: string, t: 'none' | 'uppercase' | 'lowercase' | 'capitalize') =>
+    t === 'uppercase' ? text.toUpperCase() : t === 'lowercase' ? text.toLowerCase() : text;
+
   // Render the design onto a canvas at the requested DPI (base 800x400 pt).
   const renderCanvas = async (): Promise<HTMLCanvasElement> => {
     const scale = dpi / 72;
@@ -43,6 +46,29 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
     if (!transparentBg) {
       ctx.fillStyle = design.palette.backgroundColor;
       ctx.fillRect(0, 0, width, height);
+    }
+
+    // ---- AUTO FONT MIX: render each part with its OWN font family ----
+    if (design.mixedFonts && design.mixedFonts.length > 0) {
+      for (const part of design.mixedFonts) {
+        const text = applyTransform(part.text, part.textTransform);
+        const fontSizePx = Math.max(8, part.fontSize * scale);
+        ctx.save();
+        ctx.textAlign = part.align || 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = part.colorHex;
+        ctx.font = `${part.fontWeight} ${fontSizePx}px "${part.fontFamily}", sans-serif`;
+        ctx.letterSpacing = `${part.letterSpacing * scale}px` as any;
+        if (design.shadowBlur > 0) {
+          ctx.shadowColor = design.shadowColor;
+          ctx.shadowBlur = design.shadowBlur * scale;
+          ctx.shadowOffsetX = design.shadowOffsetX * scale;
+          ctx.shadowOffsetY = design.shadowOffsetY * scale;
+        }
+        ctx.fillText(text, part.x * scale, part.y * scale);
+        ctx.restore();
+      }
+      return canvas;
     }
 
     const appliedText =
@@ -132,7 +158,33 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
         const bgRect = transparentBg
           ? ''
           : `<rect width="800" height="400" fill="${design.palette.backgroundColor}" />`;
-        const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+
+        let svgContent: string;
+        if (design.mixedFonts && design.mixedFonts.length > 0) {
+          // Multi-font vector composition: one <text> node per part, each
+          // with its own font family, weight, size, spacing and color.
+          const fontImports = design.mixedFonts
+            .map(
+              (part) =>
+                `@import url('https://fonts.googleapis.com/css2?family=${part.fontFamily.replace(/\s+/g, '+')}:wght@${part.fontWeight}&amp;display=swap');`
+            )
+            .join('\n    ');
+          const textNodes = design.mixedFonts
+            .map((part) => {
+              const anchor = part.align === 'left' ? 'start' : part.align === 'right' ? 'end' : 'middle';
+              return `  <text x="${part.x}" y="${part.y}" text-anchor="${anchor}" dominant-baseline="middle" font-family="'${part.fontFamily}', sans-serif" font-weight="${part.fontWeight}" font-size="${part.fontSize}" letter-spacing="${part.letterSpacing}" text-transform="${part.textTransform}" fill="${part.colorHex}">${applyTransform(part.text, part.textTransform)}</text>`;
+            })
+            .join('\n');
+          svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+  <style>
+    ${fontImports}
+  </style>
+  ${bgRect}
+${textNodes}
+</svg>`;
+        } else {
+          svgContent = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=${design.fontFamily.replace(/\s+/g, '+')}:wght@${design.fontWeight}&amp;display=swap');
@@ -151,6 +203,7 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
   <text x="400" y="200" class="typo-text">${displayText}</text>
   ${design.tagline ? `<text x="400" y="260" font-family="sans-serif" font-size="14" fill="${design.palette.secondaryColor}" letter-spacing="4" text-anchor="middle">${design.tagline}</text>` : ''}
 </svg>`;
+        }
         const cdrSvg =
           format === 'cdr'
             ? svgContent.replace(
@@ -176,33 +229,44 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
           downloadBlob(new Blob([pdf], { type: 'application/pdf' }), `${fileName}.${format}`);
         } else if (format === 'psd') {
           const scale = dpi / 72;
+          const textLayers = design.mixedFonts && design.mixedFonts.length > 0
+            ? design.mixedFonts.map((part) => ({
+                text: applyTransform(part.text, part.textTransform),
+                fontFamily: part.fontFamily,
+                fontSizePx: Math.max(8, Math.round(part.fontSize * scale)),
+                colorHex: part.colorHex,
+                fontWeight: part.fontWeight,
+                x: Math.round(canvas.width * 0.08),
+                y: Math.round((part.y / 400) * canvas.height),
+              }))
+            : [
+                {
+                  text: displayText,
+                  fontFamily: design.fontFamily,
+                  fontSizePx: Math.max(24, design.fontSize * 1.5 * scale),
+                  colorHex: design.palette.primaryColor,
+                  fontWeight: design.fontWeight,
+                  x: Math.round(canvas.width * 0.1),
+                  y: Math.round(canvas.height * 0.42),
+                },
+                ...(design.tagline
+                  ? [
+                      {
+                        text: design.tagline.toUpperCase(),
+                        fontFamily: 'Inter',
+                        fontSizePx: Math.max(10, 14 * scale),
+                        colorHex: design.palette.secondaryColor,
+                        fontWeight: 600,
+                        x: Math.round(canvas.width * 0.1),
+                        y: Math.round(canvas.height * 0.62),
+                      },
+                    ]
+                  : []),
+              ];
           const psdBytes = buildTypographyPSD(
             canvas.width,
             canvas.height,
-            [
-              {
-                text: displayText,
-                fontFamily: design.fontFamily,
-                fontSizePx: Math.max(24, design.fontSize * 1.5 * scale),
-                colorHex: design.palette.primaryColor,
-                fontWeight: design.fontWeight,
-                x: Math.round(canvas.width * 0.1),
-                y: Math.round(canvas.height * 0.42),
-              },
-              ...(design.tagline
-                ? [
-                    {
-                      text: design.tagline.toUpperCase(),
-                      fontFamily: 'Inter',
-                      fontSizePx: Math.max(10, 14 * scale),
-                      colorHex: design.palette.secondaryColor,
-                      fontWeight: 600,
-                      x: Math.round(canvas.width * 0.1),
-                      y: Math.round(canvas.height * 0.62),
-                    },
-                  ]
-                : []),
-            ],
+            textLayers,
             transparentBg ? null : design.palette.backgroundColor
           );
           downloadBlob(new Blob([psdBytes], { type: 'application/octet-stream' }), `${fileName}.psd`);
@@ -210,13 +274,24 @@ export const TypographyExportModal: React.FC<TypographyExportModalProps> = ({
           const eps = await buildEpsWithPng(pngDataUrl, canvas.width, canvas.height);
           downloadBlob(new Blob([eps], { type: 'application/postscript' }), `${fileName}.eps`);
         } else if (format === 'dxf') {
-          // Real DXF with TEXT entities (AutoCAD / LibreCAD / laser software)
-          const dxf = buildTextDxf([
-            { text: displayText, x: 400, y: 200, height: design.fontSize * 1.5, colorIndex: 4 },
-            ...(design.tagline
-              ? [{ text: design.tagline.toUpperCase(), x: 400, y: 130, height: 14, colorIndex: 3 }]
-              : []),
-          ]);
+          // Real DXF with TEXT entities (AutoCAD / LibreCAD / laser software).
+          // CAD Y is bottom-up, so convert design-space y → 400 - y.
+          const dxf = buildTextDxf(
+            design.mixedFonts && design.mixedFonts.length > 0
+              ? design.mixedFonts.map((part, idx) => ({
+                  text: applyTransform(part.text, part.textTransform),
+                  x: part.x,
+                  y: 400 - part.y,
+                  height: Math.max(8, part.fontSize),
+                  colorIndex: idx === 0 ? 4 : 3,
+                }))
+              : [
+                  { text: displayText, x: 400, y: 200, height: design.fontSize * 1.5, colorIndex: 4 },
+                  ...(design.tagline
+                    ? [{ text: design.tagline.toUpperCase(), x: 400, y: 130, height: 14, colorIndex: 3 }]
+                    : []),
+                ]
+          );
           downloadBlob(new Blob([dxf], { type: 'application/dxf' }), `${fileName}.dxf`);
         }
       }

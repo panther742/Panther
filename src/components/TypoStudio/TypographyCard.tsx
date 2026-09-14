@@ -38,6 +38,68 @@ export const TypographyCard: React.FC<TypographyCardProps> = ({
 
   // Render Layout / Branding Inspiration Gallery Concept Composition
   const renderComposition = () => {
+    // ---- AUTO FONT MIX: dedicated multi-font composition ----
+    // Renders 2-3 stacked parts, each with its OWN font family, weight,
+    // size, transform and color — the stylish + unique + simple mix.
+    if (design.mixedFonts && design.mixedFonts.length > 0) {
+      const scale = 0.32; // design space 800x400 → card preview
+      return (
+        <div
+          className="w-full relative p-4 rounded-2xl flex flex-col items-center justify-center gap-1.5 overflow-hidden"
+          style={{ backgroundColor: design.palette.backgroundColor }}
+        >
+          {/* subtle radial glow */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: `radial-gradient(ellipse at 50% 20%, ${design.palette.primaryColor}22, transparent 65%)`,
+            }}
+          />
+          {design.mixedFonts.map((part, idx) => {
+            const align = part.align || 'center';
+            return (
+              <span
+                key={`${design.id}-mix-${idx}`}
+                className="relative block leading-tight w-full px-2"
+                style={{
+                  fontFamily: `"${part.fontFamily}", sans-serif`,
+                  fontWeight: part.fontWeight,
+                  fontSize: `${Math.min(34, Math.max(9, part.fontSize * scale))}px`,
+                  letterSpacing: `${part.letterSpacing * scale}px`,
+                  textTransform: part.textTransform,
+                  color: part.colorHex,
+                  textAlign: align,
+                  textShadow:
+                    design.shadowBlur > 0
+                      ? `${design.shadowOffsetX}px ${design.shadowOffsetY}px ${design.shadowBlur}px ${design.shadowColor}`
+                      : undefined,
+                }}
+              >
+                {part.text}
+              </span>
+            );
+          })}
+
+          {/* corner mix badge */}
+          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-[#00D8FF]/15 border border-[#00D8FF]/40 text-[8px] font-mono font-extrabold tracking-wider text-[#5FFFF7] uppercase">
+            {design.mixedFonts.length}-Font Mix
+          </span>
+
+          {/* font chips */}
+          <div className="relative mt-1 flex flex-wrap items-center justify-center gap-1">
+            {design.mixedFonts.map((part, idx) => (
+              <span
+                key={`${design.id}-chip-${idx}`}
+                className="px-1.5 py-0.5 rounded bg-black/40 border border-white/10 text-[7px] font-mono text-white/60"
+              >
+                {part.fontFamily}
+              </span>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     const textStyle: React.CSSProperties = {
       fontFamily: `"${design.fontFamily}", sans-serif`,
       fontWeight: design.fontWeight,

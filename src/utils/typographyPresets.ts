@@ -1,4 +1,4 @@
-import { TypographyCategory, TypographyDesign, BgRecommendation, LayoutCompositionType } from '../types';
+import { TypographyCategory, TypographyDesign, TypographyMixedFontPart, BgRecommendation, LayoutCompositionType } from '../types';
 import { loadGoogleFont } from './fontUtils';
 
 export const TYPOGRAPHY_CATEGORIES: TypographyCategory[] = [
@@ -1069,4 +1069,351 @@ export function generateTypographyDesigns(
   }
 
   return generatedList;
+}
+
+/* ------------------------------------------------------------------ */
+/*  AUTO FONT MIX ENGINE                                               */
+/*  Takes the user's text and composes 2-3 different fonts per design  */
+/*  (a stylish hero font + a unique accent font + a simple clean font) */
+/*  exactly like mixed-font typography posters.                        */
+/* ------------------------------------------------------------------ */
+
+interface AutoMixPreset {
+  vibe: string;
+  category: TypographyCategory;
+  hero: { family: string; weights: number[] };
+  accent: { family: string; weights: number[] };
+  simple: { family: string; weights: number[] };
+  tagline: string;
+  palette: { primaryColor: string; secondaryColor: string; accentColor: string; backgroundColor: string; textColor: string };
+  bgRecommendation: BgRecommendation;
+  heroTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  heroSpacing: number;
+  accentTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  accentSpacing: number;
+}
+
+const AUTO_MIX_PRESETS: AutoMixPreset[] = [
+  {
+    vibe: 'Signature Luxe',
+    category: 'Luxury',
+    hero: { family: 'Playfair Display', weights: [700] },
+    accent: { family: 'Great Vibes', weights: [400] },
+    simple: { family: 'Montserrat', weights: [300] },
+    tagline: 'PREMIUM BRAND IDENTITY • EST 2026',
+    palette: { primaryColor: '#FDE68A', secondaryColor: '#D4AF37', accentColor: '#9C7A1C', backgroundColor: '#090D16', textColor: '#FFFFFF' },
+    bgRecommendation: 'Luxury Gold',
+    heroTransform: 'capitalize',
+    heroSpacing: 2,
+    accentTransform: 'none',
+    accentSpacing: 1,
+  },
+  {
+    vibe: 'Bold Street',
+    category: 'Street',
+    hero: { family: 'Bebas Neue', weights: [400] },
+    accent: { family: 'Dancing Script', weights: [700] },
+    simple: { family: 'Space Grotesk', weights: [400] },
+    tagline: 'URBAN STREETWEAR CO. • LIMITED DROP',
+    palette: { primaryColor: '#FF2A5F', secondaryColor: '#FF6B8B', accentColor: '#FFD600', backgroundColor: '#0F0A0D', textColor: '#FFFFFF' },
+    bgRecommendation: 'Black',
+    heroTransform: 'uppercase',
+    heroSpacing: 6,
+    accentTransform: 'capitalize',
+    accentSpacing: 1,
+  },
+  {
+    vibe: 'Elegant Script',
+    category: 'Wedding',
+    hero: { family: 'Alex Brush', weights: [400] },
+    accent: { family: 'Cormorant Garamond', weights: [700] },
+    simple: { family: 'Urbanist', weights: [300] },
+    tagline: 'A CELEBRATION OF LOVE & ELEGANCE',
+    palette: { primaryColor: '#F5E6C8', secondaryColor: '#D4AF37', accentColor: '#E9D5A7', backgroundColor: '#14100C', textColor: '#FFFFFF' },
+    bgRecommendation: 'Paper',
+    heroTransform: 'capitalize',
+    heroSpacing: 0,
+    accentTransform: 'uppercase',
+    accentSpacing: 5,
+  },
+  {
+    vibe: 'Modern Mono',
+    category: 'Cyberpunk',
+    hero: { family: 'Unbounded', weights: [900] },
+    accent: { family: 'JetBrains Mono', weights: [400] },
+    simple: { family: 'Outfit', weights: [400] },
+    tagline: '// FUTURE-FORWARD DESIGN SYSTEM',
+    palette: { primaryColor: '#00D8FF', secondaryColor: '#5FFFF7', accentColor: '#007BFF', backgroundColor: '#060B16', textColor: '#FFFFFF' },
+    bgRecommendation: 'Dark',
+    heroTransform: 'uppercase',
+    heroSpacing: 1,
+    accentTransform: 'uppercase',
+    accentSpacing: 4,
+  },
+  {
+    vibe: 'Retro Poster',
+    category: 'Vintage',
+    hero: { family: 'Abril Fatface', weights: [400] },
+    accent: { family: 'Righteous', weights: [400] },
+    simple: { family: 'Cormorant Garamond', weights: [400] },
+    tagline: 'SMALL BATCH • AUTHENTIC CRAFT EDITION',
+    palette: { primaryColor: '#FF7A00', secondaryColor: '#FFB800', accentColor: '#8B4513', backgroundColor: '#14100C', textColor: '#FFFFFF' },
+    bgRecommendation: 'Paper',
+    heroTransform: 'capitalize',
+    heroSpacing: 1,
+    accentTransform: 'uppercase',
+    accentSpacing: 3,
+  },
+  {
+    vibe: 'Esports Power',
+    category: 'Esports',
+    hero: { family: 'Staatliches', weights: [400] },
+    accent: { family: 'Russo One', weights: [400] },
+    simple: { family: 'Chakra Petch', weights: [400] },
+    tagline: 'TOURNAMENT EDITION • HIGH OCTANE',
+    palette: { primaryColor: '#00E676', secondaryColor: '#69F0AE', accentColor: '#00B0FF', backgroundColor: '#050F0A', textColor: '#FFFFFF' },
+    bgRecommendation: 'Dark',
+    heroTransform: 'uppercase',
+    heroSpacing: 8,
+    accentTransform: 'uppercase',
+    accentSpacing: 5,
+  },
+  {
+    vibe: 'Fashion Editorial',
+    category: 'Fashion',
+    hero: { family: 'Bodoni Moda', weights: [700] },
+    accent: { family: 'Dancing Script', weights: [400] },
+    simple: { family: 'Montserrat', weights: [300] },
+    tagline: 'HAUTE COUTURE • PARIS NEW YORK',
+    palette: { primaryColor: '#E056FD', secondaryColor: '#FF79C6', accentColor: '#BD93F9', backgroundColor: '#0D0714', textColor: '#FFFFFF' },
+    bgRecommendation: 'Neon',
+    heroTransform: 'uppercase',
+    heroSpacing: 4,
+    accentTransform: 'none',
+    accentSpacing: 1,
+  },
+  {
+    vibe: 'Minimal Clean',
+    category: 'Minimal',
+    hero: { family: 'Syne', weights: [800] },
+    accent: { family: 'Prata', weights: [400] },
+    simple: { family: 'Space Grotesk', weights: [400] },
+    tagline: 'EVERYTHING ESSENTIAL • NOTHING EXTRA',
+    palette: { primaryColor: '#E2E8F0', secondaryColor: '#94A3B8', accentColor: '#CBD5E1', backgroundColor: '#0F172A', textColor: '#FFFFFF' },
+    bgRecommendation: 'Minimal',
+    heroTransform: 'lowercase',
+    heroSpacing: -1,
+    accentTransform: 'uppercase',
+    accentSpacing: 3,
+  },
+];
+
+const MIX_DIVIDERS = ['✦ ✦ ✦', '— — —', '• • •', '◆ ◆ ◆'];
+
+/**
+ * Generate designs where each composition mixes 2-3 DIFFERENT fonts:
+ * a stylish hero font for the main word, a unique accent font for the
+ * second part, and a simple clean font for the tagline — automatically,
+ * straight from the user's text.
+ */
+export function generateAutoMixedTypographyDesigns(
+  userText: string = 'Panther Studio',
+  count: number = 8,
+  seed: number = 0
+): TypographyDesign[] {
+  const normalizedText = userText.trim() || 'Panther Studio';
+  const words = normalizedText.split(/\s+/).filter(Boolean);
+  const heroWord = words[0] || normalizedText;
+  const restWords = words.length > 1 ? words.slice(1).join(' ') : '';
+  const designs: TypographyDesign[] = [];
+
+  for (let i = 0; i < Math.max(1, Math.min(count, AUTO_MIX_PRESETS.length)); i++) {
+    const offset = (seed + i) % AUTO_MIX_PRESETS.length;
+    const p = AUTO_MIX_PRESETS[offset];
+
+    const heroWeight = p.hero.weights[0];
+    const accentWeight = p.accent.weights[0];
+    const simpleWeight = p.simple.weights[0];
+    loadGoogleFont(p.hero.family, p.hero.weights);
+    loadGoogleFont(p.accent.family, p.accent.weights);
+    loadGoogleFont(p.simple.family, p.simple.weights);
+
+    const applyTransform = (text: string, t: 'none' | 'uppercase' | 'lowercase' | 'capitalize') =>
+      t === 'uppercase' ? text.toUpperCase() : t === 'lowercase' ? text.toLowerCase() : text;
+
+    const accentText = restWords
+      ? applyTransform(restWords, p.accentTransform)
+      : MIX_DIVIDERS[offset % MIX_DIVIDERS.length];
+
+    // Layout pattern varies per preset: centered stack / offset accent / split hero
+    const parts: TypographyMixedFontPart[] = [];
+    const pattern = offset % 3;
+
+    if (pattern === 0) {
+      // Centered stacked composition
+      parts.push(
+        {
+          text: applyTransform(heroWord, p.heroTransform),
+          fontName: p.hero.family,
+          fontFamily: p.hero.family,
+          fontWeight: heroWeight,
+          fontSize: 108,
+          textTransform: p.heroTransform,
+          letterSpacing: p.heroSpacing,
+          colorHex: p.palette.primaryColor,
+          x: 400,
+          y: 140,
+          align: 'center',
+        },
+        {
+          text: accentText,
+          fontName: p.accent.family,
+          fontFamily: p.accent.family,
+          fontWeight: accentWeight,
+          fontSize: 52,
+          textTransform: p.accentTransform,
+          letterSpacing: p.accentSpacing,
+          colorHex: p.palette.secondaryColor,
+          x: 400,
+          y: 230,
+          align: 'center',
+        },
+        {
+          text: p.tagline,
+          fontName: p.simple.family,
+          fontFamily: p.simple.family,
+          fontWeight: simpleWeight,
+          fontSize: 15,
+          textTransform: 'uppercase',
+          letterSpacing: 5,
+          colorHex: p.palette.textColor,
+          x: 400,
+          y: 318,
+          align: 'center',
+        }
+      );
+    } else if (pattern === 1) {
+      // Offset accent: hero left, script accent tucked to the right of baseline
+      parts.push(
+        {
+          text: applyTransform(heroWord, p.heroTransform),
+          fontName: p.hero.family,
+          fontFamily: p.hero.family,
+          fontWeight: heroWeight,
+          fontSize: 118,
+          textTransform: p.heroTransform,
+          letterSpacing: p.heroSpacing,
+          colorHex: p.palette.primaryColor,
+          x: 360,
+          y: 150,
+          align: 'center',
+        },
+        {
+          text: accentText,
+          fontName: p.accent.family,
+          fontFamily: p.accent.family,
+          fontWeight: accentWeight,
+          fontSize: 44,
+          textTransform: p.accentTransform,
+          letterSpacing: p.accentSpacing,
+          colorHex: p.palette.accentColor,
+          x: 400,
+          y: 245,
+          align: 'right',
+        },
+        {
+          text: p.tagline,
+          fontName: p.simple.family,
+          fontFamily: p.simple.family,
+          fontWeight: simpleWeight,
+          fontSize: 14,
+          textTransform: 'uppercase',
+          letterSpacing: 6,
+          colorHex: p.palette.textColor,
+          x: 400,
+          y: 322,
+          align: 'center',
+        }
+      );
+    } else {
+      // Split hero: small-caps intro line + big hero + clean tagline
+      parts.push(
+        {
+          text: accentText,
+          fontName: p.accent.family,
+          fontFamily: p.accent.family,
+          fontWeight: accentWeight,
+          fontSize: 36,
+          textTransform: p.accentTransform,
+          letterSpacing: p.accentSpacing,
+          colorHex: p.palette.secondaryColor,
+          x: 400,
+          y: 88,
+          align: 'center',
+        },
+        {
+          text: applyTransform(heroWord, p.heroTransform),
+          fontName: p.hero.family,
+          fontFamily: p.hero.family,
+          fontWeight: heroWeight,
+          fontSize: 122,
+          textTransform: p.heroTransform,
+          letterSpacing: p.heroSpacing,
+          colorHex: p.palette.primaryColor,
+          x: 400,
+          y: 200,
+          align: 'center',
+        },
+        {
+          text: p.tagline,
+          fontName: p.simple.family,
+          fontFamily: p.simple.family,
+          fontWeight: simpleWeight,
+          fontSize: 15,
+          textTransform: 'uppercase',
+          letterSpacing: 5,
+          colorHex: p.palette.textColor,
+          x: 400,
+          y: 315,
+          align: 'center',
+        }
+      );
+    }
+
+    const heroFont = parts.find((pt) => pt.fontFamily === p.hero.family);
+    designs.push({
+      id: `typo-mix-${offset}-${seed}`,
+      styleName: `Auto Mix ${offset + 1}: ${p.hero.family} × ${p.accent.family}`,
+      category: p.category,
+      fontName: p.hero.family,
+      fontFamily: p.hero.family,
+      fontWeight: heroWeight,
+      layout: 'mixed',
+      fontSize: Math.round(heroFont?.fontSize || 108),
+      textTransform: p.heroTransform,
+      letterSpacing: p.heroSpacing,
+      wordSpacing: 0,
+      curveAngle: 0,
+      strokeWidth: 0,
+      strokeColor: p.palette.primaryColor,
+      shadowColor: 'rgba(0, 0, 0, 0.45)',
+      shadowBlur: 10,
+      shadowOffsetX: 0,
+      shadowOffsetY: 4,
+      glowColor: 'transparent',
+      glowRadius: 0,
+      gradientFill: undefined,
+      opacity: 1,
+      rotation: 0,
+      alignment: 'center',
+      palette: p.palette,
+      bgRecommendation: p.bgRecommendation,
+      badgeFrame: 'none',
+      tagline: p.tagline,
+      customText: normalizedText,
+      mixedFonts: parts,
+    });
+  }
+
+  return designs;
 }

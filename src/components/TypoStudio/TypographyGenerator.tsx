@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { TypographyCategory, TypographyDesign } from '../../types';
-import { TYPOGRAPHY_CATEGORIES, generateTypographyDesigns } from '../../utils/typographyPresets';
+import { TYPOGRAPHY_CATEGORIES, generateTypographyDesigns, generateAutoMixedTypographyDesigns } from '../../utils/typographyPresets';
 import { TypographyCard } from './TypographyCard';
 import { TypographyLiveEditor } from './TypographyLiveEditor';
 import { TypographyExportModal } from './TypographyExportModal';
@@ -13,6 +13,7 @@ import {
   Heart,
   Grid,
   Zap,
+  Shuffle,
 } from 'lucide-react';
 
 export const TypographyGenerator: React.FC = () => {
@@ -30,10 +31,20 @@ export const TypographyGenerator: React.FC = () => {
   // Live-editor saves: edited designs override the generated ones (keyed by id)
   const [designOverrides, setDesignOverrides] = useState<Map<string, TypographyDesign>>(new Map());
 
+  // Auto Font Mix: shuffle seed re-rolls the font combinations
+  const [mixSeed, setMixSeed] = useState<number>(0);
+
   // Generate Typography Designs based on text, target count, category, search
   const generatedDesigns = useMemo(() => {
     return generateTypographyDesigns(inputText, targetCount, selectedCategory, searchQuery);
   }, [inputText, targetCount, selectedCategory, searchQuery]);
+
+  // AUTO FONT MIX: instantly combines 2-3 different fonts (stylish hero +
+  // unique accent + simple tagline) from the user's text — no manual pairing.
+  const autoMixDesigns = useMemo(() => {
+    const fresh = generateAutoMixedTypographyDesigns(inputText, 8, mixSeed);
+    return fresh.map((d) => designOverrides.get(d.id) ?? d);
+  }, [inputText, mixSeed, designOverrides]);
 
   // Filtered designs including favorites toggle + applied live-editor changes
   const displayedDesigns = useMemo(() => {
@@ -204,6 +215,56 @@ export const TypographyGenerator: React.FC = () => {
         <span className="text-[11px] font-mono text-[#5FFFF7] hidden sm:inline">
           Category: <strong className="text-white">{selectedCategory}</strong>
         </span>
+      </div>
+
+      {/* AUTO FONT MIX — 2-3 fonts combined automatically */}
+      <div className="rounded-[18px] bg-gradient-to-r from-[#0E1628] via-[#111C30] to-[#0E1628] border border-[#D4AF37]/30 shadow-2xl overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-[#00D8FF]/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] shadow-lg shadow-[#D4AF37]/20">
+              <Shuffle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight">
+                  Auto Font Mix
+                </h2>
+                <span className="px-2.5 py-0.5 text-[9px] font-extrabold tracking-widest bg-gradient-to-r from-[#D4AF37] to-[#FDE68A] text-black rounded-full uppercase">
+                  2–3 Fonts Combined
+                </span>
+              </div>
+              <p className="text-xs text-[#C9D4E5]/75 mt-0.5 font-medium">
+                Type your text → we auto-pair a <strong className="text-[#FDE68A]">stylish hero font</strong> + a{' '}
+                <strong className="text-[#FDE68A]">unique accent font</strong> + a{' '}
+                <strong className="text-[#FDE68A]">simple clean font</strong> into finished compositions.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setMixSeed((s) => s + 1)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#FDE68A] hover:from-[#FDE68A] hover:to-[#D4AF37] text-black font-extrabold text-xs shadow-lg shadow-[#D4AF37]/20 transition-all self-start sm:self-auto"
+            id="auto-mix-shuffle"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Shuffle Mix</span>
+          </button>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {autoMixDesigns.map((design) => (
+              <TypographyCard
+                key={design.id}
+                design={design}
+                userText={inputText}
+                onEdit={(d) => setEditingDesign(d)}
+                onDownload={(d) => setDownloadingDesign(d)}
+                onToggleFavorite={handleToggleFavorite}
+                isFavorite={favorites.has(design.id)}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* GENERATED DESIGNS GRID */}
